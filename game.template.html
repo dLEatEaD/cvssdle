@@ -1,0 +1,737 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CVSSdle — the daily vulnerability scoring game</title>
+<meta name="description" content="A daily guessing game for security teams. Read a real CVE, guess its CVSS base score in 6 tries.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23b11f4b'/%3E%3Ctext x='50' y='72' font-size='58' font-family='Consolas,monospace' font-weight='bold' text-anchor='middle' fill='white'%3E9%3C/text%3E%3C/svg%3E">
+<script>
+  (() => {
+    const param = new URLSearchParams(window.location.search).get("scoutTheme");
+    const theme =
+      param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    document.documentElement.setAttribute("data-theme", theme);
+  })();
+</script>
+<style>
+:root {
+  color-scheme: light;
+  --cp-bg: #f7f4ef;
+  --cp-bg-elevated: #fcfbf8;
+  --cp-surface: #ffffff;
+  --cp-surface-soft: #f5f5f5;
+  --cp-border: #dedede;
+  --cp-border-strong: #919191;
+  --cp-text: #242424;
+  --cp-text-muted: #5c5c5c;
+  --cp-text-soft: #6f6f6f;
+  --cp-accent: #b11f4b;
+  --cp-accent-hover: #9a1a41;
+  --cp-accent-soft: rgba(177, 31, 75, 0.08);
+  --cp-accent-fg: #ffffff;
+  --cp-success: #16a34a;
+  --cp-danger: #dc2626;
+  --cp-warning: #f59e0b;
+  --cp-link: #0078d4;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+  --cp-overlay: rgba(255, 255, 255, 0.8);
+  --cp-panel: rgba(255, 255, 255, 0.86);
+  --cp-panel-strong: rgba(255, 255, 255, 0.96);
+  --cp-sheen: rgba(255, 255, 255, 0.55);
+  --cp-highlight: rgba(177, 31, 75, 0.12);
+}
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --cp-bg: #3d3b3a;
+  --cp-bg-elevated: #343231;
+  --cp-surface: #292929;
+  --cp-surface-soft: #2e2e2e;
+  --cp-border: #474747;
+  --cp-border-strong: #5f5f5f;
+  --cp-text: #dedede;
+  --cp-text-muted: #919191;
+  --cp-text-soft: #b0b0b0;
+  --cp-accent: #fd8ea1;
+  --cp-accent-hover: #fb7b91;
+  --cp-accent-soft: rgba(253, 142, 161, 0.14);
+  --cp-accent-fg: #1a1a1a;
+  --cp-success: #4ade80;
+  --cp-danger: #f87171;
+  --cp-warning: #fbbf24;
+  --cp-link: #4da6ff;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+  --cp-overlay: rgba(41, 41, 41, 0.88);
+  --cp-panel: rgba(41, 41, 41, 0.72);
+  --cp-panel-strong: rgba(41, 41, 41, 0.96);
+  --cp-sheen: rgba(255, 255, 255, 0.04);
+  --cp-highlight: rgba(253, 142, 161, 0.12);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--cp-bg);
+  color: var(--cp-text);
+  font-family: "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif;
+  line-height: 1.5;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 16px 48px;
+}
+.mono { font-family: Consolas, "Courier New", Courier, monospace; }
+
+header {
+  width: 100%;
+  max-width: 620px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 18px 0 14px;
+  border-bottom: 1px solid var(--cp-border);
+  margin-bottom: 20px;
+}
+h1 {
+  font-size: 1.45rem;
+  margin: 0;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+h1 span { color: var(--cp-accent); }
+.tagline { font-size: 0.75rem; color: var(--cp-text-muted); margin-top: 1px; }
+.icon-btn {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--cp-text-muted);
+  font-size: 1.15rem;
+  cursor: pointer;
+  border-radius: 0.625rem;
+  width: 36px; height: 36px;
+  display: grid; place-items: center;
+  transition: background .15s, color .15s;
+}
+.icon-btn:hover { background: var(--cp-surface-soft); color: var(--cp-text); }
+
+main { width: 100%; max-width: 620px; }
+
+.card {
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-border);
+  border-radius: 16px;
+  padding: 18px 20px;
+  box-shadow: 0 0 2px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.14);
+  margin-bottom: 16px;
+}
+.puzzle-meta {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin-bottom: 12px; align-items: center;
+}
+.chip {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--cp-accent-soft);
+  color: var(--cp-accent);
+  border: 1px solid var(--cp-accent-soft);
+  letter-spacing: .02em;
+}
+.chip.neutral {
+  background: var(--cp-surface-soft);
+  color: var(--cp-text-muted);
+  border-color: var(--cp-border);
+}
+.chip.ransom { background: rgba(220,38,38,.1); color: var(--cp-danger); border-color: rgba(220,38,38,.2); }
+.vuln-title { font-weight: 650; font-size: 1.02rem; margin: 0 0 8px; }
+.vuln-desc { margin: 0; color: var(--cp-text-soft); font-size: 0.93rem; }
+
+.hints { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--cp-border); }
+.hints-label {
+  font-size: 0.7rem; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--cp-text-muted); font-weight: 700; margin-bottom: 8px;
+}
+.hint-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.hint {
+  font-size: 0.75rem;
+  padding: 4px 10px;
+  border-radius: 0.625rem;
+  border: 1px solid var(--cp-border);
+  background: var(--cp-surface-soft);
+  color: var(--cp-text-muted);
+}
+.hint.revealed { border-color: var(--cp-accent); color: var(--cp-text); background: var(--cp-accent-soft); }
+.hint b { color: var(--cp-accent); font-weight: 650; }
+
+.guesses { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.row {
+  display: grid;
+  grid-template-columns: 86px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--cp-border);
+  border-radius: 0.625rem;
+  padding: 10px 14px;
+  background: var(--cp-surface);
+  min-height: 52px;
+}
+.row.empty { opacity: .45; border-style: dashed; background: none; }
+.row .val {
+  font-size: 1.15rem; font-weight: 700;
+  font-family: Consolas, "Courier New", Courier, monospace;
+}
+.row .feedback { font-size: 0.87rem; color: var(--cp-text-muted); }
+.row .arrow { font-size: 1.3rem; font-weight: 700; }
+.hot   { color: var(--cp-danger); }
+.warm  { color: var(--cp-warning); }
+.cold  { color: var(--cp-link); }
+.right { color: var(--cp-success); }
+.bar {
+  height: 5px; border-radius: 999px; background: var(--cp-surface-soft);
+  overflow: hidden; margin-top: 5px;
+}
+.bar > i { display: block; height: 100%; border-radius: 999px; background: currentColor; }
+
+.input-area { display: flex; gap: 8px; margin-bottom: 8px; }
+input[type="number"] {
+  flex: 1;
+  font-size: 1.15rem;
+  font-family: Consolas, "Courier New", Courier, monospace;
+  padding: 12px 14px;
+  border-radius: 0.625rem;
+  border: 1px solid var(--cp-border-strong);
+  background: var(--cp-surface);
+  color: var(--cp-text);
+  min-width: 0;
+}
+input[type="number"]:focus { outline: 2px solid var(--cp-accent); outline-offset: 1px; border-color: transparent; }
+input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; }
+button.primary {
+  background: var(--cp-accent);
+  color: var(--cp-accent-fg);
+  border: none;
+  font-weight: 650;
+  font-size: 0.95rem;
+  padding: 12px 22px;
+  border-radius: 0.625rem;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background .15s;
+}
+button.primary:hover:not(:disabled) { background: var(--cp-accent-hover); }
+button.primary:disabled { opacity: .4; cursor: not-allowed; }
+.scale-hint { font-size: 0.75rem; color: var(--cp-text-muted); text-align: center; }
+
+.result { text-align: center; }
+.result h2 { margin: 0 0 4px; font-size: 1.25rem; }
+.answer-score {
+  font-size: 2.6rem; font-weight: 800; letter-spacing: -0.03em;
+  font-family: Consolas, "Courier New", Courier, monospace;
+  line-height: 1.1;
+}
+.answer-vector {
+  font-size: 0.78rem; word-break: break-all; color: var(--cp-text-muted);
+  background: var(--cp-surface-soft); padding: 8px 10px; border-radius: 0.625rem;
+  margin: 10px 0;
+  font-family: Consolas, "Courier New", Courier, monospace;
+}
+.result a { color: var(--cp-link); font-size: 0.85rem; }
+.btn-row { display: flex; gap: 8px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
+button.ghost {
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-border-strong);
+  color: var(--cp-text);
+  font-weight: 600; font-size: 0.9rem; font-family: inherit;
+  padding: 11px 18px; border-radius: 0.625rem; cursor: pointer;
+}
+button.ghost:hover { background: var(--cp-surface-soft); }
+.countdown { font-size: 0.8rem; color: var(--cp-text-muted); margin-top: 12px; }
+.countdown b { font-family: Consolas, "Courier New", Courier, monospace; color: var(--cp-text); }
+
+dialog {
+  border: 1px solid var(--cp-border);
+  border-radius: 16px;
+  background: var(--cp-surface);
+  color: var(--cp-text);
+  box-shadow: var(--cp-shadow);
+  max-width: 440px; width: calc(100% - 32px);
+  padding: 22px;
+  font-family: inherit;
+}
+dialog::backdrop { background: rgba(0,0,0,.45); }
+dialog h2 { margin: 0 0 12px; font-size: 1.1rem; }
+dialog p, dialog li { font-size: 0.9rem; color: var(--cp-text-soft); }
+dialog ul { padding-left: 20px; }
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: center; margin: 16px 0; }
+.stat b { display: block; font-size: 1.5rem; font-family: Consolas, "Courier New", Courier, monospace; }
+.stat span { font-size: 0.68rem; color: var(--cp-text-muted); text-transform: uppercase; letter-spacing: .04em; }
+.dist-row { display: grid; grid-template-columns: 14px 1fr; gap: 8px; align-items: center; margin-bottom: 4px; font-size: 0.8rem; }
+.dist-bar {
+  background: var(--cp-accent); color: var(--cp-accent-fg);
+  border-radius: 4px; padding: 1px 6px; text-align: right;
+  font-family: Consolas, "Courier New", Courier, monospace; min-width: 26px;
+}
+.dist-bar.dim { background: var(--cp-border); color: var(--cp-text-muted); }
+.close-x { position: absolute; }
+footer {
+  max-width: 620px; width: 100%; margin-top: 8px;
+  font-size: 0.75rem; color: var(--cp-text-muted); text-align: center;
+}
+footer a { color: var(--cp-link); }
+.toast {
+  position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
+  background: var(--cp-text); color: var(--cp-bg);
+  padding: 10px 18px; border-radius: 0.625rem; font-size: 0.87rem; font-weight: 600;
+  opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 99;
+}
+.toast.show { opacity: 1; }
+@media (max-width: 480px) {
+  .row { grid-template-columns: 70px 1fr auto; gap: 8px; padding: 9px 11px; }
+  h1 { font-size: 1.2rem; }
+  .stats-grid { gap: 4px; }
+  .stat b { font-size: 1.2rem; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>CVSS<span>dle</span></h1>
+    <div class="tagline" id="tagline">Daily vulnerability scoring</div>
+  </div>
+  <div>
+    <button class="icon-btn" id="btn-help" title="How to play" aria-label="How to play">?</button>
+    <button class="icon-btn" id="btn-stats" title="Statistics" aria-label="Statistics">&#9783;</button>
+    <button class="icon-btn" id="btn-theme" title="Toggle theme" aria-label="Toggle theme">&#9681;</button>
+  </div>
+</header>
+
+<main>
+  <div class="card" id="puzzle-card">
+    <div class="puzzle-meta" id="puzzle-meta"></div>
+    <p class="vuln-title" id="vuln-title"></p>
+    <p class="vuln-desc" id="vuln-desc"></p>
+    <div class="hints">
+      <div class="hints-label">CVSS vector &mdash; one metric revealed per wrong guess</div>
+      <div class="hint-grid" id="hint-grid"></div>
+    </div>
+  </div>
+
+  <div class="guesses" id="guesses"></div>
+
+  <div id="play-area">
+    <div class="input-area">
+      <input type="number" id="guess" min="0" max="10" step="0.1" placeholder="0.0 &ndash; 10.0" inputmode="decimal" autocomplete="off">
+      <button class="primary" id="btn-guess">Guess</button>
+    </div>
+    <div class="scale-hint">CVSS v3.1 base score &middot; 0.1 increments &middot; 6 tries</div>
+  </div>
+
+  <div class="card result" id="result" hidden></div>
+</main>
+
+<footer>
+  Built for security teams &middot; data from
+  <a href="https://nvd.nist.gov/" target="_blank" rel="noopener">NVD</a> &amp;
+  <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" target="_blank" rel="noopener">CISA KEV</a>
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<dialog id="dlg-help">
+  <h2>How to play</h2>
+  <p>Each day you get one real, actively-exploited vulnerability from the CISA KEV catalog. Guess its <b>CVSS v3.1 base score</b> in 6 tries.</p>
+  <ul>
+    <li>After each guess you're told whether the real score is <b>higher</b> or <b>lower</b>.</li>
+    <li>Colour shows how close you are: <span class="right">exact</span>, <span class="hot">hot (&le;0.5)</span>, <span class="warm">warm (&le;1.5)</span>, <span class="cold">cold</span>.</li>
+    <li>Every wrong guess reveals one metric from the real CVSS vector &mdash; attack vector, complexity, privileges required, and so on.</li>
+    <li>Use the revealed metrics to actually <i>calculate</i> the score. That's the skill.</li>
+  </ul>
+  <p>A new vulnerability unlocks at local midnight. Everyone gets the same one.</p>
+  <div class="btn-row"><button class="primary" data-close>Got it</button></div>
+</dialog>
+
+<dialog id="dlg-stats">
+  <h2>Statistics</h2>
+  <div class="stats-grid">
+    <div class="stat"><b id="s-played">0</b><span>Played</span></div>
+    <div class="stat"><b id="s-win">0</b><span>Win %</span></div>
+    <div class="stat"><b id="s-streak">0</b><span>Streak</span></div>
+    <div class="stat"><b id="s-max">0</b><span>Max</span></div>
+  </div>
+  <h2 style="font-size:.95rem">Guess distribution</h2>
+  <div id="dist"></div>
+  <div class="btn-row">
+    <button class="ghost" id="btn-practice">Practice puzzle</button>
+    <button class="primary" data-close>Close</button>
+  </div>
+</dialog>
+
+<script>
+const PUZZLES = __PUZZLE_DATA__;
+
+const EPOCH = Date.UTC(2026, 0, 1);
+const MAX_GUESSES = 6;
+const KEY_STATS = "cvssdle.stats.v1";
+const KEY_STATE = "cvssdle.state.v1";
+
+const METRIC_NAMES = {
+  AV: ["Attack Vector", { N: "Network", A: "Adjacent", L: "Local", P: "Physical" }],
+  AC: ["Attack Complexity", { L: "Low", H: "High" }],
+  PR: ["Privileges Required", { N: "None", L: "Low", H: "High" }],
+  UI: ["User Interaction", { N: "None", R: "Required" }],
+  S:  ["Scope", { U: "Unchanged", C: "Changed" }],
+  C:  ["Confidentiality", { H: "High", L: "Low", N: "None" }],
+  I:  ["Integrity", { H: "High", L: "Low", N: "None" }],
+  A:  ["Availability", { H: "High", L: "Low", N: "None" }],
+};
+const HINT_ORDER = ["AV", "AC", "PR", "UI", "S", "C", "I", "A"];
+
+/* ---------- storage helpers (degrade gracefully in sandboxes) ---------- */
+function load(key, fallback) {
+  try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
+  catch { return fallback; }
+}
+function save(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* sandboxed */ }
+}
+
+/* ---------- daily puzzle selection ---------- */
+function todayIndex() {
+  const now = new Date();
+  const local = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.floor((local - EPOCH) / 86400000);
+}
+function puzzleNumber() {
+  return todayIndex() + 1;
+}
+/* Deterministic per-cycle shuffle: every puzzle is used exactly once
+   before any repeats, and the order is identical for every player. */
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const orderCache = new Map();
+function cycleOrder(cycle) {
+  if (orderCache.has(cycle)) return orderCache.get(cycle);
+  const rand = mulberry32(0x5eed + cycle * 7919);
+  const arr = PUZZLES.map((_, i) => i);
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  orderCache.set(cycle, arr);
+  return arr;
+}
+function puzzleForDay(day) {
+  const n = PUZZLES.length;
+  const cycle = Math.floor(day / n);
+  const offset = ((day % n) + n) % n;
+  return PUZZLES[cycleOrder(cycle)[offset]];
+}
+
+let practiceMode = false;
+let puzzle, guesses = [], finished = false, won = false;
+
+/* ---------- rendering ---------- */
+const $ = (id) => document.getElementById(id);
+
+function proximity(diff) {
+  if (diff === 0) return { cls: "right", label: "Exact" };
+  if (diff <= 0.5) return { cls: "hot", label: "Hot" };
+  if (diff <= 1.5) return { cls: "warm", label: "Warm" };
+  return { cls: "cold", label: "Cold" };
+}
+
+function renderPuzzle() {
+  const meta = $("puzzle-meta");
+  meta.innerHTML = "";
+  const chips = [
+    { t: puzzle.vendor, c: "chip" },
+    { t: puzzle.product, c: "chip neutral" },
+    { t: puzzle.published.slice(0, 4), c: "chip neutral" },
+  ];
+  if (puzzle.ransomware) chips.push({ t: "Used in ransomware", c: "chip ransom" });
+  for (const c of chips) {
+    const el = document.createElement("span");
+    el.className = c.c;
+    el.textContent = c.t;
+    meta.appendChild(el);
+  }
+  $("vuln-title").textContent = puzzle.name;
+  $("vuln-desc").textContent = puzzle.desc;
+  $("tagline").textContent = practiceMode
+    ? "Practice puzzle"
+    : "Daily vulnerability scoring \u00b7 #" + puzzleNumber();
+}
+
+function parseVector() {
+  const out = {};
+  for (const part of puzzle.vector.split("/")) {
+    const [k, v] = part.split(":");
+    if (METRIC_NAMES[k]) out[k] = v;
+  }
+  return out;
+}
+
+function renderHints() {
+  const vec = parseVector();
+  const reveal = finished ? HINT_ORDER.length : guesses.length;
+  const grid = $("hint-grid");
+  grid.innerHTML = "";
+  HINT_ORDER.forEach((key, i) => {
+    const [label, values] = METRIC_NAMES[key];
+    const el = document.createElement("span");
+    if (i < reveal && vec[key]) {
+      el.className = "hint revealed";
+      el.innerHTML = label + ": <b>" + (values[vec[key]] || vec[key]) + "</b>";
+    } else {
+      el.className = "hint";
+      el.textContent = label + ": ?";
+    }
+    grid.appendChild(el);
+  });
+}
+
+function renderGuesses() {
+  const wrap = $("guesses");
+  wrap.innerHTML = "";
+  for (let i = 0; i < MAX_GUESSES; i++) {
+    const row = document.createElement("div");
+    const g = guesses[i];
+    if (g === undefined) {
+      row.className = "row empty";
+      row.innerHTML = '<div class="val">&mdash;</div><div class="feedback"></div><div></div>';
+    } else {
+      const diff = Math.round(Math.abs(puzzle.score - g) * 10) / 10;
+      const p = proximity(diff);
+      row.className = "row";
+      const arrow = diff === 0 ? "&#10003;" : (puzzle.score > g ? "&uarr;" : "&darr;");
+      const word = diff === 0 ? "Correct" : (puzzle.score > g ? "Higher" : "Lower");
+      const pct = Math.max(4, 100 - Math.min(diff, 10) * 10);
+      row.innerHTML =
+        '<div class="val ' + p.cls + '">' + g.toFixed(1) + "</div>" +
+        '<div><div class="feedback">' + word + " \u00b7 " + p.label + "</div>" +
+        '<div class="bar ' + p.cls + '"><i style="width:' + pct + '%"></i></div></div>' +
+        '<div class="arrow ' + p.cls + '">' + arrow + "</div>";
+    }
+    wrap.appendChild(row);
+  }
+}
+
+function shareGrid() {
+  return guesses.map((g) => {
+    const diff = Math.round(Math.abs(puzzle.score - g) * 10) / 10;
+    if (diff === 0) return "\uD83D\uDFE9";
+    if (diff <= 0.5) return "\uD83D\uDFE5";
+    if (diff <= 1.5) return "\uD83D\uDFE8";
+    return "\uD83D\uDFE6";
+  }).join("");
+}
+
+function shareText() {
+  const head = practiceMode
+    ? "CVSSdle practice"
+    : "CVSSdle #" + puzzleNumber() + " " + (won ? guesses.length : "X") + "/" + MAX_GUESSES;
+  return head + "\n" + shareGrid() + "\n" + location.href.split("?")[0];
+}
+
+function renderResult() {
+  const el = $("result");
+  el.hidden = false;
+  $("play-area").hidden = true;
+  const sevColor = puzzle.score >= 9 ? "hot" : puzzle.score >= 7 ? "warm" : "cold";
+  el.innerHTML =
+    "<h2>" + (won ? "Nailed it \uD83C\uDF89" : "Out of guesses") + "</h2>" +
+    '<div class="answer-score ' + sevColor + '">' + puzzle.score.toFixed(1) + "</div>" +
+    '<div class="chip" style="display:inline-block;margin-top:6px">' + puzzle.severity + "</div>" +
+    '<div class="answer-vector">' + puzzle.vector + "</div>" +
+    '<a href="' + puzzle.url + '" target="_blank" rel="noopener">' + puzzle.id + " on NVD &rarr;</a>" +
+    '<div class="btn-row">' +
+      '<button class="primary" id="btn-share">Share result</button>' +
+      '<button class="ghost" id="btn-another">Practice again</button>' +
+    "</div>" +
+    (practiceMode ? "" : '<div class="countdown" id="countdown"></div>');
+
+  $("btn-share").onclick = async () => {
+    const text = shareText();
+    if (navigator.share) {
+      try { await navigator.share({ text }); return; } catch { /* fall through */ }
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      toast("Copied to clipboard");
+      return;
+    } catch { /* clipboard blocked \u2014 show a selectable fallback */ }
+    let box = $("share-fallback");
+    if (!box) {
+      box = document.createElement("textarea");
+      box.id = "share-fallback";
+      box.readOnly = true;
+      box.rows = 3;
+      box.style.cssText =
+        "width:100%;margin-top:12px;font-family:Consolas,monospace;font-size:.85rem;" +
+        "padding:10px;border-radius:.625rem;border:1px solid var(--cp-border);" +
+        "background:var(--cp-surface-soft);color:var(--cp-text);resize:none";
+      el.appendChild(box);
+    }
+    box.value = text;
+    box.select();
+    toast("Select and copy");
+  };
+  $("btn-another").onclick = startPractice;
+  if (!practiceMode) tickCountdown();
+}
+
+let countdownTimer = null;
+function tickCountdown() {
+  const el = $("countdown");
+  if (!el) return;
+  const now = new Date();
+  const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const s = Math.max(0, Math.floor((next - now) / 1000));
+  const pad = (n) => String(n).padStart(2, "0");
+  el.innerHTML = "Next vulnerability in <b>" +
+    pad(Math.floor(s / 3600)) + ":" + pad(Math.floor(s / 60) % 60) + ":" + pad(s % 60) + "</b>";
+  clearTimeout(countdownTimer);
+  countdownTimer = setTimeout(tickCountdown, 1000);
+}
+
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 1800);
+}
+
+/* ---------- game flow ---------- */
+function submitGuess() {
+  if (finished) return;
+  const input = $("guess");
+  const raw = parseFloat(input.value);
+  if (Number.isNaN(raw) || raw < 0 || raw > 10) {
+    toast("Enter a score between 0.0 and 10.0");
+    return;
+  }
+  const g = Math.round(raw * 10) / 10;
+  if (guesses.includes(g)) {
+    toast("You already guessed " + g.toFixed(1));
+    return;
+  }
+  guesses.push(g);
+  input.value = "";
+  if (g === puzzle.score) { finished = true; won = true; }
+  else if (guesses.length >= MAX_GUESSES) { finished = true; won = false; }
+
+  renderGuesses();
+  renderHints();
+  if (finished) {
+    if (!practiceMode) { recordStats(); persist(); }
+    renderResult();
+  } else if (!practiceMode) {
+    persist();
+  }
+  input.focus();
+}
+
+function persist() {
+  save(KEY_STATE, { day: todayIndex(), guesses, finished, won });
+}
+
+function restore() {
+  const st = load(KEY_STATE, null);
+  if (st && st.day === todayIndex() && Array.isArray(st.guesses)) {
+    guesses = st.guesses;
+    finished = st.finished;
+    won = st.won;
+    return true;
+  }
+  return false;
+}
+
+function blankStats() {
+  return { played: 0, wins: 0, streak: 0, max: 0, dist: [0, 0, 0, 0, 0, 0], lastDay: null };
+}
+
+function recordStats() {
+  const s = load(KEY_STATS, blankStats());
+  const day = todayIndex();
+  if (s.lastDay === day) return;
+  s.played++;
+  if (won) {
+    s.wins++;
+    s.streak = s.lastDay === day - 1 ? s.streak + 1 : 1;
+    s.max = Math.max(s.max, s.streak);
+    s.dist[guesses.length - 1]++;
+  } else {
+    s.streak = 0;
+  }
+  s.lastDay = day;
+  save(KEY_STATS, s);
+}
+
+function renderStats() {
+  const s = load(KEY_STATS, blankStats());
+  $("s-played").textContent = s.played;
+  $("s-win").textContent = s.played ? Math.round((s.wins / s.played) * 100) : 0;
+  $("s-streak").textContent = s.streak;
+  $("s-max").textContent = s.max;
+  const peak = Math.max(1, ...s.dist);
+  $("dist").innerHTML = s.dist.map((n, i) => {
+    const isLast = !practiceMode && finished && won && guesses.length === i + 1;
+    return '<div class="dist-row"><span>' + (i + 1) + "</span>" +
+      '<div class="dist-bar' + (n && isLast ? "" : n ? "" : " dim") + '" style="width:' +
+      Math.max(8, (n / peak) * 100) + '%">' + n + "</div></div>";
+  }).join("");
+}
+
+function startPractice() {
+  practiceMode = true;
+  puzzle = PUZZLES[Math.floor(Math.random() * PUZZLES.length)];
+  guesses = []; finished = false; won = false;
+  clearTimeout(countdownTimer);
+  $("result").hidden = true;
+  $("play-area").hidden = false;
+  renderPuzzle(); renderGuesses(); renderHints();
+  $("guess").focus();
+  document.getElementById("dlg-stats").close();
+}
+
+function startDaily() {
+  practiceMode = false;
+  puzzle = puzzleForDay(todayIndex());
+  guesses = []; finished = false; won = false;
+  const resumed = restore();
+  renderPuzzle(); renderGuesses(); renderHints();
+  if (resumed && finished) renderResult();
+  else { $("result").hidden = true; $("play-area").hidden = false; }
+}
+
+/* ---------- wiring ---------- */
+$("btn-guess").onclick = submitGuess;
+$("guess").addEventListener("keydown", (e) => { if (e.key === "Enter") submitGuess(); });
+$("btn-help").onclick = () => $("dlg-help").showModal();
+$("btn-stats").onclick = () => { renderStats(); $("dlg-stats").showModal(); };
+$("btn-practice").onclick = startPractice;
+$("btn-theme").onclick = () => {
+  const cur = document.documentElement.getAttribute("data-theme");
+  document.documentElement.setAttribute("data-theme", cur === "dark" ? "light" : "dark");
+};
+document.querySelectorAll("[data-close]").forEach((b) => {
+  b.onclick = () => b.closest("dialog").close();
+});
+
+startDaily();
+if (!load(KEY_STATS, null)) $("dlg-help").showModal();
+$("guess").focus();
+</script>
+</body>
+</html>
