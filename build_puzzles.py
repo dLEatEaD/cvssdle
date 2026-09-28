@@ -21,6 +21,11 @@ KEV = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabil
 PAGE = 2000
 OUT = Path(__file__).parent / "puzzles.json"
 
+# Shapes enforced on fields that the game interpolates into innerHTML.
+CVE_RE = re.compile(r"CVE-\d{4}-\d{4,7}")
+VECTOR_RE = re.compile(r"CVSS:3\.[01]/[A-Za-z:/]+")
+VALID_SEVERITIES = {"Critical", "High", "Medium", "Low", "None"}
+
 # Only keep vulns from vendors a security team will actually recognize.
 KNOWN_VENDORS = {
     "Microsoft", "Apache", "Cisco", "Citrix", "Fortinet", "VMware", "Oracle",
@@ -121,6 +126,19 @@ def main() -> None:
         )
         if len(desc) < 60:
             continue
+
+        # The renderer interpolates id, vector and severity into innerHTML
+        # (including an href), so enforce their shape here rather than trusting
+        # upstream. Anything unexpected is dropped instead of shipped.
+        severity = cvss["baseSeverity"].title()
+        vector = cvss["vectorString"]
+        if not CVE_RE.fullmatch(cid):
+            continue
+        if not VECTOR_RE.fullmatch(vector):
+            continue
+        if severity not in VALID_SEVERITIES:
+            continue
+
         puzzles.append(
             {
                 "id": cid,
@@ -129,8 +147,8 @@ def main() -> None:
                 "name": meta["vulnerabilityName"],
                 "desc": redact(clean(desc), cid),
                 "score": round(float(cvss["baseScore"]), 1),
-                "severity": cvss["baseSeverity"].title(),
-                "vector": cvss["vectorString"],
+                "severity": severity,
+                "vector": vector,
                 "published": cve.get("published", "")[:10],
                 "ransomware": meta.get("knownRansomwareCampaignUse") == "Known",
                 "url": f"https://nvd.nist.gov/vuln/detail/{cid}",
