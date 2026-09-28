@@ -1139,28 +1139,57 @@ function submitGuess() {
 }
 
 function persist() {
-  save(KEY_STATE, { day: DAILY.number, guesses, finished, won });
+  save(KEY_STATE, {
+    day: DAILY.number,
+    // Pin the saved guesses to the exact puzzle they were made against.
+    // The day number alone is not enough: refreshing the pool re-splits it and
+    // remaps day numbers to different CVEs, and replaying old guesses against a
+    // new answer produces feedback that is confidently wrong.
+    id: DAILY.puzzle.id,
+    guesses,
+    finished,
+    won,
+  });
 }
 
 function restore() {
   const st = load(KEY_STATE, null);
-  if (st && st.day === DAILY.number && Array.isArray(st.guesses)) {
-    guesses = st.guesses;
-    finished = st.finished;
-    won = st.won;
-    return true;
-  }
-  return false;
+  if (!st || st.day !== DAILY.number || st.id !== DAILY.puzzle.id) return false;
+
+  // Saved state is user-writable, so validate rather than trust it.
+  if (!Array.isArray(st.guesses) || st.guesses.length > MAX_GUESSES) return false;
+  const clean = st.guesses.filter(
+    (g) => typeof g === "number" && Number.isFinite(g) && g >= 0 && g <= 10
+  );
+  if (clean.length !== st.guesses.length) return false;
+
+  guesses = clean;
+  finished = Boolean(st.finished);
+  won = Boolean(st.won);
+
+  // Keep the restored outcome consistent with the guesses themselves, so a
+  // hand-edited state cannot show a win banner over losing guesses.
+  const hit = guesses.some((g) => g === DAILY.puzzle.score);
+  if (won !== hit) { won = hit; }
+  if (!finished) { finished = hit || guesses.length >= MAX_GUESSES; }
+  return true;
 }
 
 function blankStats() {
-  return { played: 0, wins: 0, streak: 0, max: 0, dist: [0, 0, 0, 0, 0, 0], lastDay: null };
+  return { played: 0, wins: 0, streak: 0, max: 0, dist: [0, 0, 0, 0, 0, 0],
+           lastDay: null, lastId: null };
 }
 
 function recordStats() {
   const s = load(KEY_STATS, blankStats());
   const day = DAILY.number;
-  if (s.lastDay === day) return;
+  // Also key on the CVE id: if a pool refresh remapped this day to a different
+  // puzzle, the earlier result was recorded against a different question and
+  // this genuinely is a new one.
+  if (s.lastDay === day && s.lastId === DAILY.puzzle.id) return;
+  if (!Array.isArray(s.dist) || s.dist.length !== MAX_GUESSES) {
+    s.dist = [0, 0, 0, 0, 0, 0];
+  }
   s.played++;
   if (won) {
     s.wins++;
@@ -1171,6 +1200,7 @@ function recordStats() {
     s.streak = 0;
   }
   s.lastDay = day;
+  s.lastId = DAILY.puzzle.id;
   save(KEY_STATS, s);
 }
 

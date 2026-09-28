@@ -71,9 +71,19 @@ def cycle_order(n: int, seed: bytes, cycle: int) -> list[int]:
 
 
 def pick(pool: list, day: date, seed: bytes) -> dict:
+    """Day N takes position N in the stored pool order.
+
+    split_pool.py already stores the daily pool in play order and preserves
+    that order across refreshes, so reading it positionally keeps a given day
+    pointing at the same CVE even as new puzzles are appended.
+
+    Later cycles reshuffle, so the second pass through the pool is not a replay
+    of the first.
+    """
     n = len(pool)
-    offset_days = (day - EPOCH).days
-    cycle, offset = divmod(offset_days, n)
+    cycle, offset = divmod((day - EPOCH).days, n)
+    if cycle == 0:
+        return pool[offset]
     return pool[cycle_order(n, seed, cycle)[offset]]
 
 

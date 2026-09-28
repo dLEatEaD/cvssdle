@@ -15,6 +15,8 @@ Usage:
 
 import argparse
 import base64
+import hashlib
+import hmac
 import json
 import os
 import sys
@@ -86,10 +88,74 @@ def partition(puzzles: list, practice_n: int) -> tuple[list, list]:
     return practice, daily
 
 
+def _rand_stream(seed: bytes, label: str):
+    """Deterministic byte stream from HMAC-SHA256 in counter mode."""
+    counter = 0
+    while True:
+        block = hmac.new(seed, f"{label}:{counter}".encode(), hashlib.sha256).digest()
+        for i in range(0, 32, 4):
+            yield int.from_bytes(block[i:i + 4], "big")
+        counter += 1
+
+
+def shuffled(items: list, seed: bytes, label: str) -> list:
+    """Seeded Fisher-Yates. Same seed and label always give the same order."""
+    rand = _rand_stream(seed, label)
+    out = list(items)
+    for i in range(len(out) - 1, 0, -1):
+        j = next(rand) % (i + 1)
+        out[i], out[j] = out[j], out[i]
+    return out
+
+
+def existing_order(key: bytes) -> list[str]:
+    """CVE ids of the current daily pool, in play order. Empty if none."""
+    if not DAILY_OUT.exists():
+        return []
+    try:
+        blob = DAILY_OUT.read_bytes()
+        pool = json.loads(decrypt(blob, key))
+        return [p["id"] for p in pool]
+    except Exception:
+        return []
+
+
+def daily_order(daily: list, key: bytes, seed: bytes, rebuild: bool) -> list:
+    """Put the daily pool into play order, stable across refreshes.
+
+    pick_daily.py reads this pool positionally, so preserving the order of
+    puzzles that are already scheduled keeps day numbers pointing at the same
+    CVE. New arrivals are appended after them. Without this, adding a single
+    puzzle reshuffles every day in the calendar and anyone mid-game sees their
+    guesses replayed against a different answer.
+
+    Pass rebuild=True when the filters change and the old schedule should be
+    discarded outright.
+    """
+    if rebuild:
+        return shuffled(daily, seed, "daily")
+
+    prior = existing_order(key)
+    if not prior:
+        return shuffled(daily, seed, "daily")
+
+    by_id = {p["id"]: p for p in daily}
+    kept = [by_id.pop(pid) for pid in prior if pid in by_id]
+    # Anything left is new since the last refresh; it extends the schedule.
+    fresh = shuffled(list(by_id.values()), seed, f"append{len(kept)}")
+    dropped = len(prior) - len(kept)
+    if dropped:
+        print(f"note: {dropped} puzzles left the source pool", file=sys.stderr)
+    print(f"schedule: {len(kept)} positions preserved, {len(fresh)} appended")
+    return kept + fresh
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--practice", type=int, default=100,
+    ap.add_argument("--practice", type=int, default=150,
                     help="how many puzzles to reserve for practice mode")
+    ap.add_argument("--rebuild", action="store_true",
+                    help="discard the existing schedule and reshuffle from scratch")
     ap.add_argument("--new-key", action="store_true",
                     help="print a fresh base64 key and exit")
     args = ap.parse_args()
@@ -99,8 +165,13 @@ def main() -> None:
         return
 
     key = load_key()
+    seed = os.environ.get("PUZZLE_SEED", "").strip().encode()
+    if not seed:
+        sys.exit("PUZZLE_SEED is not set")
+
     puzzles = json.loads(SOURCE.read_text())
     practice, daily = partition(puzzles, args.practice)
+    daily = daily_order(daily, key, seed, args.rebuild)
 
     overlap = {p["id"] for p in practice} & {p["id"] for p in daily}
     assert not overlap, f"pools overlap: {overlap}"
@@ -117,8 +188,8 @@ def main() -> None:
     # Fail loudly rather than shipping a pool that cannot be opened in CI.
     assert json.loads(decrypt(blob, key)) == daily, "round-trip failed"
 
-    print(f"practice pool : {len(practice):>3} puzzles -> {PRACTICE_OUT.name}")
-    print(f"daily pool    : {len(daily):>3} puzzles -> {DAILY_OUT.name} "
+    print(f"practice pool : {len(practice):>4} puzzles -> {PRACTICE_OUT.name}")
+    print(f"daily pool    : {len(daily):>4} puzzles -> {DAILY_OUT.name} "
           f"({len(blob) / 1024:.0f} KB encrypted)")
     print(f"daily pool lasts ~{len(daily) / 365:.1f} years")
 
