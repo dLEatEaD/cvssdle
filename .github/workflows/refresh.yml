@@ -11,7 +11,7 @@ on:
     inputs:
       practice_size:
         description: "Puzzles to reserve for practice mode"
-        default: "100"
+        default: "150"
 
 permissions:
   contents: write
@@ -34,15 +34,15 @@ jobs:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: |
           if [ -n "${NVD_API_KEY:-}" ]; then
-            python3 build_puzzles.py --limit 400 --api-key "$NVD_API_KEY"
+            python3 build_puzzles.py --api-key "$NVD_API_KEY"
           else
-            python3 build_puzzles.py --limit 400
+            python3 build_puzzles.py
           fi
 
       - name: Re-split the pools
         env:
           PUZZLE_KEY: ${{ secrets.PUZZLE_KEY }}
-        run: python3 split_pool.py --practice "${{ inputs.practice_size || 100 }}"
+        run: python3 split_pool.py --practice "${{ inputs.practice_size || 150 }}"
 
       - name: Confirm no plaintext answers are staged
         run: |

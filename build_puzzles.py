@@ -26,6 +26,32 @@ CVE_RE = re.compile(r"CVE-\d{4}-\d{4,7}")
 VECTOR_RE = re.compile(r"CVSS:3\.[01]/[A-Za-z:/]+")
 VALID_SEVERITIES = {"Critical", "High", "Medium", "Low", "None"}
 
+# Desktop, mobile and server operating systems are excluded: they dominate KEV
+# (313 of 1233 entries, 139 of them just "Microsoft Windows") and the records
+# are repetitive, which makes for a monotonous game. Network and security
+# appliance firmware that happens to be named an OS - Cisco IOS, PAN-OS,
+# FortiOS, Junos - is deliberately kept, since those are the interesting ones.
+OS_VENDORS = {"Apple", "Android", "Samsung"}
+OS_PRODUCTS = {
+    ("Microsoft", "Windows"),
+    ("Microsoft", "Win32k"),
+    ("Microsoft", "Windows Kernel"),
+}
+
+
+def is_operating_system(vendor: str, product: str) -> bool:
+    if vendor in OS_VENDORS:
+        return True
+    if (vendor, product) in OS_PRODUCTS:
+        return True
+    if vendor == "Microsoft" and product.startswith("Windows"):
+        return True
+    if vendor == "Linux" and "kernel" in product.lower():
+        return True
+    if vendor == "Google" and "android" in product.lower():
+        return True
+    return False
+
 # Only keep vulns from vendors a security team will actually recognize.
 KNOWN_VENDORS = {
     "Microsoft", "Apache", "Cisco", "Citrix", "Fortinet", "VMware", "Oracle",
@@ -83,7 +109,8 @@ def redact(text: str, cve_id: str) -> str:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--api-key", default=None)
-    ap.add_argument("--limit", type=int, default=400, help="max puzzles to keep")
+    ap.add_argument("--limit", type=int, default=0,
+                    help="max puzzles to keep (0 = no cap, use everything eligible)")
     args = ap.parse_args()
 
     print("Fetching CISA KEV catalog...")
@@ -120,6 +147,8 @@ def main() -> None:
         cvss = primary["cvssData"]
         meta = kev_meta.get(cid)
         if not meta or meta["vendorProject"] not in KNOWN_VENDORS:
+            continue
+        if is_operating_system(meta["vendorProject"], meta["product"]):
             continue
         desc = next(
             (d["value"] for d in cve.get("descriptions", []) if d["lang"] == "en"), ""
@@ -162,14 +191,17 @@ def main() -> None:
     for group in by_score.values():
         group.sort(key=lambda p: p["published"], reverse=True)
 
+    # Interleave across score bands so the pool isn't front-loaded with 9.8s.
+    # This ordering is what split_pool.py relies on to keep both pools balanced.
+    cap = args.limit or len(puzzles)
     balanced, round_robin = [], True
-    while round_robin and len(balanced) < args.limit:
+    while round_robin and len(balanced) < cap:
         round_robin = False
         for score in sorted(by_score, reverse=True):
             if by_score[score]:
                 balanced.append(by_score[score].pop(0))
                 round_robin = True
-            if len(balanced) >= args.limit:
+            if len(balanced) >= cap:
                 break
 
     OUT.write_text(json.dumps(balanced, indent=1))
@@ -179,7 +211,7 @@ def main() -> None:
     print(f"\nWrote {len(balanced)} puzzles to {OUT.name}")
     print("Severity mix:", dist)
     print("Unique scores:", len({p['score'] for p in balanced}))
-    print(f"Enough for {len(balanced) // 365:.1f} years, or {len(balanced)} days.")
+    print(f"Enough for {len(balanced) / 365:.1f} years of dailies.")
 
 
 if __name__ == "__main__":

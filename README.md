@@ -13,8 +13,12 @@ quietly drills CVSS fluency.
 
 ## How it works
 
-- One puzzle per day, identical for every player, rolls over at local midnight.
-- 400 puzzles in the pool — every one is used before any repeats.
+- One puzzle per day, identical for every player.
+- ~765 puzzles in the daily pool — every one is used before any repeats,
+  so the sequence runs about two years before it can come round again.
+- Desktop, mobile and server OS bugs are excluded. They dominate KEV and the
+  records are repetitive. Network and security appliance firmware that happens
+  to be named an OS (Cisco IOS, PAN-OS, FortiOS, Junos) is deliberately kept.
 - Feedback per guess: higher/lower plus a proximity band (exact / hot ≤0.5 /
   warm ≤1.5 / cold).
 - Streaks, win rate, and guess distribution are kept in `localStorage`.
@@ -98,8 +102,8 @@ The `Refresh puzzle pool` workflow does this monthly and opens a PR. By hand:
 
 ```bash
 export PUZZLE_KEY=...                  # same value as the repo secret
-python3 build_puzzles.py --limit 400   # re-pull from NVD + CISA
-python3 split_pool.py --practice 100   # re-split and re-encrypt
+python3 build_puzzles.py               # re-pull from NVD + CISA
+python3 split_pool.py --practice 150   # re-split and re-encrypt
 ```
 
 Re-splitting reshuffles which puzzles are dailies, so the sequence changes from
@@ -126,10 +130,13 @@ variable in CI.
 
 ### Tuning the content
 
-`build_puzzles.py` has a `KNOWN_VENDORS` set that filters the pool down to
-vendors a security team will actually recognise. Add or remove entries there to
-taste. The script also balances the pool across score bands so the answer isn't
-a 9.8 four days out of five.
+`build_puzzles.py` has two filters: `KNOWN_VENDORS`, which keeps the pool to
+vendors a security team will recognise, and `is_operating_system()`, which
+drops desktop/mobile/server OS entries. Adjust either to taste. The script
+also interleaves the pool across score bands so the answer isn't a 9.8 four
+days out of five.
+
+By default it keeps everything eligible; pass `--limit N` to cap the pool.
 
 ## Local development
 
