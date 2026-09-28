@@ -9,7 +9,7 @@ attack complexity, privileges required, and so on — so by guess four you can
 stop guessing and start actually calculating. That's the hook: it's a game that
 quietly drills CVSS fluency.
 
-**Play:** https://YOUR-USERNAME.github.io/cvssdle/
+**Play:** https://dleatead.github.io/cvssdle/
 
 ## How it works
 
@@ -23,8 +23,8 @@ quietly drills CVSS fluency.
   of the other outcomes has 30 of its own.
 - Practice mode for unlimited extra puzzles.
 
-- Dark SOC-console theme by default, matching the Pentair Vigil palette
-  (near-black navy `#030711`, sky-blue `#0da2e7`), with a light mode toggle.
+- Dark SOC-console theme by default (near-black navy `#030711`, sky-blue
+  `#0da2e7`), with a light mode toggle.
 
 No backend, no accounts, no API keys, no tracking. `index.html` is a single
 self-contained file with the puzzle data baked in.
@@ -48,13 +48,13 @@ git init
 git add .
 git commit -m "Initial commit"
 git branch -M main
-git remote add origin git@github.com:YOUR-USERNAME/cvssdle.git
+git remote add origin github-personal:dLEatEaD/cvssdle.git
 git push -u origin main
 ```
 
 Then in the repo: **Settings → Pages → Source: Deploy from a branch →
 `main` / `(root)`**. It'll be live at
-`https://YOUR-USERNAME.github.io/cvssdle/` within a minute.
+`https://dleatead.github.io/cvssdle/` within a minute.
 
 Update the play URL at the top of this README once it's live.
 
