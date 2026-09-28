@@ -191,6 +191,7 @@ main { width: 100%; max-width: 620px; }
   font-size: 0.65rem; text-transform: uppercase; letter-spacing: .12em;
   color: var(--cp-text-muted); font-weight: 700; margin-bottom: 9px;
 }
+.hints-label em { font-style: normal; color: var(--cp-accent); }
 .hint-grid { display: flex; flex-wrap: wrap; gap: 6px; }
 .hint {
   font-size: 0.74rem;
@@ -310,6 +311,10 @@ button.primary:disabled { opacity: .4; cursor: not-allowed; box-shadow: none; }
 
 .result { text-align: center; }
 .result h2 { margin: 0 0 4px; font-size: 1.25rem; }
+.quip {
+  margin: 0 0 10px; font-size: 0.86rem; color: var(--cp-text-muted);
+  font-style: italic; line-height: 1.45;
+}
 .answer-score {
   font-size: 3rem; font-weight: 800; letter-spacing: -0.04em;
   font-family: Consolas, "Courier New", Courier, monospace;
@@ -433,7 +438,7 @@ footer a:hover { text-decoration: underline; }
     <p class="vuln-title" id="vuln-title"></p>
     <p class="vuln-desc" id="vuln-desc"></p>
     <div class="hints">
-      <div class="hints-label">CVSS vector &mdash; one metric revealed per wrong guess</div>
+      <div class="hints-label" id="hints-label">CVSS vector</div>
       <div class="hint-grid" id="hint-grid"></div>
     </div>
   </div>
@@ -553,6 +558,12 @@ const EPOCH = Date.UTC(2026, 0, 1);
 const MAX_GUESSES = 6;
 const KEY_STATS = "cvssdle.stats.v1";
 const KEY_STATE = "cvssdle.state.v1";
+
+/* Public URL used in shared results. Set this to your GitHub Pages URL so
+   shares are clickable for teammates. When the game is running locally the
+   real address (localhost / file://) is useless to anyone else, so we fall
+   back to this value instead. */
+const SHARE_URL = "https://YOUR-USERNAME.github.io/cvssdle/";
 
 const METRIC_NAMES = {
   AV: ["Attack Vector", { N: "Network", A: "Adjacent", L: "Local", P: "Physical" }],
@@ -674,6 +685,18 @@ function renderHints() {
     }
     grid.appendChild(el);
   });
+
+  // Make the masked state read as intentional rather than broken.
+  const shown = Math.min(reveal, HINT_ORDER.length);
+  const lbl = $("hints-label");
+  if (finished) {
+    lbl.textContent = "CVSS vector \u00b7 full answer";
+  } else if (shown === 0) {
+    lbl.innerHTML = "CVSS vector \u00b7 <em>locked</em> \u2014 each wrong guess reveals one";
+  } else {
+    lbl.innerHTML = "CVSS vector \u00b7 <em>" + shown + " of " + HINT_ORDER.length +
+      "</em> revealed";
+  }
 }
 
 function renderGuesses() {
@@ -712,20 +735,135 @@ function shareGrid() {
   }).join("");
 }
 
+function shareUrl() {
+  const host = location.hostname;
+  const isLocal =
+    location.protocol === "file:" ||
+    host === "localhost" || host === "127.0.0.1" || host === "" ||
+    host.endsWith(".local");
+  // A localhost or file:// address is meaningless to whoever you paste this to.
+  if (isLocal) return SHARE_URL.includes("YOUR-USERNAME") ? "" : SHARE_URL;
+  return location.origin + location.pathname.replace(/index\.html$/, "");
+}
+
 function shareText() {
   const head = practiceMode
     ? "CVSSdle practice"
     : "CVSSdle #" + puzzleNumber() + " " + (won ? guesses.length : "X") + "/" + MAX_GUESSES;
-  return head + "\n" + shareGrid() + "\n" + location.href.split("?")[0];
+  const url = shareUrl();
+  return head + "\n" + shareGrid() + (url ? "\n" + url : "");
 }
 
+/* Clipboard write with a legacy fallback, since the async Clipboard API is
+   unavailable on file:// and on http:// origins other than localhost. */
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch { /* fall through to execCommand */ }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+/* Headline + quip per guess count. Only guess 1 earns "Nailed it". */
+const VERDICTS = {
+  1: {
+    title: "Nailed it \uD83C\uDF89",
+    quips: [
+      "First guess. Either you know CVSS cold or you've read this advisory.",
+      "One shot. The scoring rubric fears you.",
+      "Straight to the number. Nothing left to calculate.",
+      "Called it blind. That's the whole game, beaten in one move.",
+    ],
+  },
+  2: {
+    title: "Two guesses \uD83C\uDFAF",
+    quips: [
+      "One bracket, then the kill. Efficient.",
+      "Bisected it like a pro. Barely needed the hints.",
+      "Two moves. Most people are still reading the description.",
+      "Quick triage, correct severity. Ship it.",
+    ],
+  },
+  3: {
+    title: "Three guesses \uD83D\uDC4D",
+    quips: [
+      "Solid. That's a respectable mean time to resolution.",
+      "Three tries, well within SLA.",
+      "Converged nicely. The vector hints did their job.",
+      "Comfortably inside the window. No escalation needed.",
+    ],
+  },
+  4: {
+    title: "Four guesses \uD83D\uDE05",
+    quips: [
+      "Got there. We're not going to audit the methodology.",
+      "Four tries is still a pass. Barely.",
+      "You brute-forced the base score. Effective, if inelegant.",
+      "Found it eventually. Let's call that thorough analysis.",
+    ],
+  },
+  5: {
+    title: "Five guesses \uD83D\uDE2C",
+    quips: [
+      "Cutting it fine. One more and this was an incident.",
+      "Five. At this point the vector was basically the answer key.",
+      "You had seven of eight metrics. But you got there.",
+      "That's less scoring and more negotiating.",
+    ],
+  },
+  6: {
+    title: "Six guesses \uD83D\uDE13",
+    quips: [
+      "The entire vector was showing. We both know what happened.",
+      "Last possible guess. Technically a win. Technically.",
+      "Six of six. Add it to the risk register.",
+      "Scraped in on the final attempt. No notes. Actually, several.",
+    ],
+  },
+};
+
+const LOSS_QUIPS = [
+  "The vector was right there the whole time.",
+  "Mark it risk-accepted and move on.",
+  "Some vulnerabilities just refuse to be scored.",
+  "This one goes in the backlog. Permanently.",
+  "Six guesses, no match. CVSS remains undefeated.",
+];
+
+/* Deterministic pick so the quip doesn't change on re-render or reload. */
+function quipFor(list, seed) {
+  return list[Math.abs(seed) % list.length];
+}
 function renderResult() {
   const el = $("result");
   el.hidden = false;
   $("play-area").hidden = true;
   const sevColor = puzzle.score >= 9 ? "hot" : puzzle.score >= 7 ? "warm" : "cold";
+
+  // Seed on the puzzle + guess count so the quip is stable across re-renders.
+  const seed = puzzle.score * 10 + guesses.length + puzzle.id.length;
+  const verdict = won ? VERDICTS[guesses.length] : null;
+  const heading = won ? verdict.title : "Out of guesses";
+  const quip = won ? quipFor(verdict.quips, seed) : quipFor(LOSS_QUIPS, seed);
+
   el.innerHTML =
-    "<h2>" + (won ? "Nailed it \uD83C\uDF89" : "Out of guesses") + "</h2>" +
+    "<h2>" + heading + "</h2>" +
+    '<p class="quip">' + quip + "</p>" +
     '<div class="answer-score ' + sevColor + '">' + puzzle.score.toFixed(1) + "</div>" +
     '<div class="chip" style="display:inline-block;margin-top:6px">' + puzzle.severity + "</div>" +
     '<div class="answer-vector">' + puzzle.vector + "</div>" +
@@ -738,14 +876,17 @@ function renderResult() {
 
   $("btn-share").onclick = async () => {
     const text = shareText();
-    if (navigator.share) {
+    // navigator.share exists on desktop Chromium but opens an OS share sheet
+    // that copies nothing, so only use it where it actually helps: touch.
+    const isTouch = matchMedia("(pointer: coarse)").matches;
+    if (isTouch && navigator.share) {
       try { await navigator.share({ text }); return; } catch { /* fall through */ }
     }
-    try {
-      await navigator.clipboard.writeText(text);
-      toast("Copied to clipboard");
+    if (await copyText(text)) {
+      toast("Copied \u2014 paste it in chat");
       return;
-    } catch { /* clipboard blocked \u2014 show a selectable fallback */ }
+    }
+    // Last resort: show it selected so the user can copy manually.
     let box = $("share-fallback");
     if (!box) {
       box = document.createElement("textarea");
@@ -753,14 +894,15 @@ function renderResult() {
       box.readOnly = true;
       box.rows = 3;
       box.style.cssText =
-        "width:100%;margin-top:12px;font-family:Consolas,monospace;font-size:.85rem;" +
-        "padding:10px;border-radius:.625rem;border:1px solid var(--cp-border);" +
-        "background:var(--cp-surface-soft);color:var(--cp-text);resize:none";
+        "width:100%;margin-top:12px;font-family:Consolas,monospace;font-size:.9rem;" +
+        "padding:10px;border-radius:10px;border:1px solid var(--cp-accent);" +
+        "background:var(--cp-surface-soft);color:var(--cp-text);resize:none;text-align:left";
       el.appendChild(box);
     }
     box.value = text;
+    box.focus();
     box.select();
-    toast("Select and copy");
+    toast("Press \u2318C to copy");
   };
   $("btn-another").onclick = startPractice;
   if (!practiceMode) tickCountdown();
@@ -870,14 +1012,23 @@ function renderStats() {
 
 function startPractice() {
   practiceMode = true;
-  puzzle = PUZZLES[Math.floor(Math.random() * PUZZLES.length)];
+  // Avoid handing out the same puzzle twice in a row.
+  let next = puzzle;
+  while (PUZZLES.length > 1 && next === puzzle) {
+    next = PUZZLES[Math.floor(Math.random() * PUZZLES.length)];
+  }
+  puzzle = next;
   guesses = []; finished = false; won = false;
   clearTimeout(countdownTimer);
   $("result").hidden = true;
   $("play-area").hidden = false;
+  const box = $("share-fallback");
+  if (box) box.remove();
+  $("guess").value = "";
   renderPuzzle(); renderGuesses(); renderHints();
   $("guess").focus();
   document.getElementById("dlg-stats").close();
+  toast("New practice vulnerability");
 }
 
 function startDaily() {
