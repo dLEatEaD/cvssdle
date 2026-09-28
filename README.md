@@ -21,6 +21,9 @@ quietly drills CVSS fluency.
 - Shareable emoji result grid, Wordle-style.
 - Practice mode for unlimited extra puzzles.
 
+- Dark SOC-console theme by default, matching the Pentair Vigil palette
+  (near-black navy `#030711`, sky-blue `#0da2e7`), with a light mode toggle.
+
 No backend, no accounts, no API keys, no tracking. `index.html` is a single
 self-contained file with the puzzle data baked in.
 
