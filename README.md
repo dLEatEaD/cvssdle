@@ -19,6 +19,8 @@ quietly drills CVSS fluency.
   warm ≤1.5 / cold).
 - Streaks, win rate, and guess distribution are kept in `localStorage`.
 - Shareable emoji result grid, Wordle-style.
+- 210 end-of-game quips: only a first-guess win earns "Nailed it", and each
+  of the other outcomes has 30 of its own.
 - Practice mode for unlimited extra puzzles.
 
 - Dark SOC-console theme by default, matching the Pentair Vigil palette
@@ -36,6 +38,8 @@ self-contained file with the puzzle data baked in.
 | `puzzles.json` | Generated puzzle data (CVE, description, score, vector). |
 | `build_puzzles.py` | Pulls fresh CVE data from NVD + CISA KEV. |
 | `build_site.py` | Inlines `puzzles.json` into the template to produce `index.html`. |
+| `build_quips.py` | Source of the 210 end-of-game quips; regenerates the block in the template. |
+| `play.sh` | Serve locally and open a browser. |
 
 ## Deploying to GitHub Pages
 
@@ -61,6 +65,13 @@ The KEV catalog grows constantly, so regenerate whenever you want new content:
 ```bash
 python3 build_puzzles.py --limit 400   # re-pull from NVD + CISA
 python3 build_site.py                  # rebuild index.html
+```
+
+To change the end-of-game messages, edit the lists in `build_quips.py`, then:
+
+```bash
+python3 build_quips.py   # rewrites the block in game.template.html
+python3 build_site.py    # rebuild index.html
 ```
 
 No API key is required. NVD rate-limits anonymous callers to 5 requests per 30
