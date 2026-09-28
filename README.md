@@ -82,6 +82,13 @@ a 9.8 four days out of five.
 ## Local development
 
 ```bash
+./play.sh          # serves on :8777 and opens your browser
+./play.sh 9000     # or pick a port
+```
+
+Or rebuild and serve manually:
+
+```bash
 python3 build_site.py
 python3 -m http.server 8777
 # open http://localhost:8777
