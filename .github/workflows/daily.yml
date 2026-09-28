@@ -44,6 +44,9 @@ jobs:
       - name: Install dependencies
         run: pip install --quiet cryptography
 
+      - name: Check the schedule matches the client countdown
+        run: python3 check_schedule.py
+
       - name: Select today's puzzle
         env:
           PUZZLE_KEY: ${{ secrets.PUZZLE_KEY }}
