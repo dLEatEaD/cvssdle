@@ -26,20 +26,46 @@ quietly drills CVSS fluency.
 - Dark SOC-console theme by default (near-black navy `#030711`, sky-blue
   `#0da2e7`), with a light mode toggle.
 
-No backend, no accounts, no API keys, no tracking. `index.html` is a single
-self-contained file with the puzzle data baked in.
+No backend, no accounts, no tracking. `index.html` is a single self-contained
+file — no external requests at runtime.
+
+## How the answers stay hidden
+
+A static site has to hand the browser today's score to give higher/lower
+feedback, so **today's answer is readable from view-source**. That much is
+unavoidable without a server, and the game is built on the honour system.
+
+What *is* avoidable is leaking every *future* answer, which the original build
+did by shipping all 400 puzzles and selecting one client-side. Instead:
+
+- The daily pool is committed only as AES-256-GCM ciphertext. The key lives in
+  Actions secrets, never in the tree.
+- A scheduled workflow decrypts it, picks one puzzle, and publishes a build
+  containing **that one answer**. Tomorrow's is simply not in the artifact.
+- Selection is `HMAC-SHA256(seed, date)` over a per-cycle shuffle, so every
+  puzzle is used once before any repeat and the order is unguessable without
+  the seed.
+- The practice pool ships in the clear but is disjoint from the daily pool, and
+  same-advisory CVEs are kept in one pool so a practice puzzle can't telegraph
+  a daily.
+- `verify_build.py` fails the build if any future answer appears.
 
 ## Project layout
 
 | File | Purpose |
 | --- | --- |
-| `index.html` | The built game. This is the only file that needs to be served. |
-| `game.template.html` | Game source, with a `__PUZZLE_DATA__` placeholder. **Edit this, not `index.html`.** |
-| `puzzles.json` | Generated puzzle data (CVE, description, score, vector). |
-| `build_puzzles.py` | Pulls fresh CVE data from NVD + CISA KEV. |
-| `build_site.py` | Inlines `puzzles.json` into the template to produce `index.html`. |
-| `build_quips.py` | Source of the 210 end-of-game quips; regenerates the block in the template. |
+| `game.template.html` | Game source. **Edit this** — `index.html` is generated. |
+| `puzzles.practice.json` | Practice pool, in the clear. Spoilable by design. |
+| `puzzles.daily.enc` | Daily pool, AES-256-GCM. Opened only in CI. |
+| `build_puzzles.py` | Pulls fresh CVE data from NVD + CISA KEV into `puzzles.json`. |
+| `split_pool.py` | Splits `puzzles.json` into the practice and encrypted daily pools. |
+| `pick_daily.py` | Selects today's puzzle from the daily pool. Runs in CI. |
+| `build_site.py` | Builds `index.html` from the template, today's puzzle, and the practice pool. |
+| `verify_build.py` | CI gate: proves no future answers reached the build. |
+| `build_quips.py` | Source of the 210 end-of-game quips. |
 | `play.sh` | Serve locally and open a browser. |
+
+`index.html`, `puzzles.json` and `today.json` are generated and gitignored.
 
 ## Deploying to GitHub Pages
 
@@ -52,20 +78,32 @@ git remote add origin github-personal:dLEatEaD/cvssdle.git
 git push -u origin main
 ```
 
-Then in the repo: **Settings → Pages → Source: Deploy from a branch →
-`main` / `(root)`**. It'll be live at
-`https://dleatead.github.io/cvssdle/` within a minute.
+Then:
 
-Update the play URL at the top of this README once it's live.
+1. **Settings → Pages → Source: GitHub Actions** (not "Deploy from a branch").
+2. **Settings → Secrets and variables → Actions** and add:
+   - `PUZZLE_KEY` — from `python3 split_pool.py --new-key`
+   - `PUZZLE_SEED` — any long random string
+   - `NVD_API_KEY` — optional, speeds up the monthly refresh
+
+The daily workflow publishes at 05:05 UTC (midnight Central). Change the cron
+in `.github/workflows/daily.yml` and `ROLLOVER_UTC` in `build_site.py` together
+if you want a different time. Run it by hand from the Actions tab any time.
 
 ## Refreshing the puzzle pool
 
 The KEV catalog grows constantly, so regenerate whenever you want new content:
 
+The `Refresh puzzle pool` workflow does this monthly and opens a PR. By hand:
+
 ```bash
+export PUZZLE_KEY=...                  # same value as the repo secret
 python3 build_puzzles.py --limit 400   # re-pull from NVD + CISA
-python3 build_site.py                  # rebuild index.html
+python3 split_pool.py --practice 100   # re-split and re-encrypt
 ```
+
+Re-splitting reshuffles which puzzles are dailies, so the sequence changes from
+the next publish onwards.
 
 To change the end-of-game messages, edit the lists in `build_quips.py`, then:
 
@@ -96,16 +134,15 @@ a 9.8 four days out of five.
 ## Local development
 
 ```bash
-./play.sh          # serves on :8777 and opens your browser
-./play.sh 9000     # or pick a port
+python3 build_site.py   # without PUZZLE_KEY this stands in a practice puzzle
+./play.sh               # serves on :8777 and opens your browser
 ```
 
-Or rebuild and serve manually:
+With `PUZZLE_KEY` and `PUZZLE_SEED` set you can build the real daily locally:
 
 ```bash
+python3 pick_daily.py --date 2026-10-01
 python3 build_site.py
-python3 -m http.server 8777
-# open http://localhost:8777
 ```
 
 `index.html` also works when opened directly from disk, since the data is

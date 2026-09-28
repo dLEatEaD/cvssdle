@@ -1,0 +1,70 @@
+name: Refresh puzzle pool
+
+# The KEV catalogue grows constantly. This re-pulls it monthly, rebuilds both
+# pools, and opens a PR. It never commits to main directly: re-splitting the
+# pool changes which puzzles are dailies, so it deserves a human look.
+
+on:
+  schedule:
+    - cron: "0 6 1 * *" # 06:00 UTC on the 1st
+  workflow_dispatch:
+    inputs:
+      practice_size:
+        description: "Puzzles to reserve for practice mode"
+        default: "100"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install --quiet cryptography
+
+      - name: Pull fresh CVE data
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          if [ -n "${NVD_API_KEY:-}" ]; then
+            python3 build_puzzles.py --limit 400 --api-key "$NVD_API_KEY"
+          else
+            python3 build_puzzles.py --limit 400
+          fi
+
+      - name: Re-split the pools
+        env:
+          PUZZLE_KEY: ${{ secrets.PUZZLE_KEY }}
+        run: python3 split_pool.py --practice "${{ inputs.practice_size || 100 }}"
+
+      - name: Confirm no plaintext answers are staged
+        run: |
+          # puzzles.json holds every answer in the clear and must never be
+          # committed. It is gitignored; this is the backstop.
+          if git status --porcelain | grep -qE '(^|\s)puzzles\.json$'; then
+            echo "puzzles.json is staged - refusing to open a PR"
+            exit 1
+          fi
+
+      - uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "Refresh puzzle pool from NVD and CISA KEV"
+          branch: refresh-puzzles
+          delete-branch: true
+          title: "Refresh puzzle pool"
+          body: |
+            Monthly re-pull of the CISA KEV catalogue and NVD scores.
+
+            Re-splitting reshuffles which puzzles are dailies, so the daily
+            sequence will change from the next publish onwards. Merging
+            triggers a rebuild.
+          add-paths: |
+            puzzles.practice.json
+            puzzles.daily.enc

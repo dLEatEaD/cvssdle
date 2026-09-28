@@ -1,0 +1,81 @@
+name: Publish daily puzzle
+
+# Publishes one puzzle per day. Only that day's answer reaches the built site;
+# the rest of the pool stays encrypted in puzzles.daily.enc.
+
+on:
+  schedule:
+    # 05:05 UTC = midnight Central (CDT). Must match ROLLOVER_UTC in build_site.py.
+    # GitHub's scheduler can lag by several minutes under load; the site simply
+    # serves the previous puzzle until the run completes.
+    - cron: "5 5 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    # Rebuild when the game itself changes, not on docs-only edits.
+    paths:
+      - "game.template.html"
+      - "build_site.py"
+      - "pick_daily.py"
+      - "puzzles.daily.enc"
+      - "puzzles.practice.json"
+      - ".github/workflows/daily.yml"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never publish two builds at once, but let a newer run supersede a queued one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install --quiet cryptography
+
+      - name: Select today's puzzle
+        env:
+          PUZZLE_KEY: ${{ secrets.PUZZLE_KEY }}
+          PUZZLE_SEED: ${{ secrets.PUZZLE_SEED }}
+        run: python3 pick_daily.py
+
+      - name: Build site
+        run: python3 build_site.py
+
+      - name: Verify no future answers were published
+        env:
+          PUZZLE_KEY: ${{ secrets.PUZZLE_KEY }}
+        run: python3 verify_build.py
+
+      - name: Stage the published site
+        # Publish only what the browser needs. Build scripts, the encrypted
+        # pool, and today.json (which holds the answer in plaintext) stay out.
+        run: |
+          mkdir -p dist
+          cp index.html .nojekyll dist/
+          ls -la dist
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

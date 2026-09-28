@@ -1,15 +1,27 @@
 #!/usr/bin/env python3
-"""Inline puzzles.json into game.template.html to produce a standalone index.html.
+"""Build index.html from the template, today's puzzle, and the practice pool.
 
-Usage:  python3 build_site.py
+Only ONE daily answer is inlined. Future daily answers are never present in the
+published artifact - they stay in puzzles.daily.enc, which needs a key held in
+Actions secrets.
+
+Usage:
+    python3 pick_daily.py      # writes today.json (needs PUZZLE_KEY/SEED)
+    python3 build_site.py
 """
 
 import json
+import sys
 from pathlib import Path
 
 HERE = Path(__file__).parent
-template = (HERE / "game.template.html").read_text()
-puzzles = json.loads((HERE / "puzzles.json").read_text())
+TEMPLATE = HERE / "game.template.html"
+PRACTICE = HERE / "puzzles.practice.json"
+TODAY = HERE / "today.json"
+OUT = HERE / "index.html"
+
+# UTC time the daily workflow publishes. Must match the cron in daily.yml.
+ROLLOVER_UTC = "05:05"
 
 
 def js_safe(data: str) -> str:
@@ -33,25 +45,59 @@ def js_safe(data: str) -> str:
     )
 
 
-# Compact JSON keeps the single-file build small enough to load instantly.
-# ensure_ascii=True (the default) is load-bearing: it keeps U+2028/U+2029,
-# which are JS line terminators, out of the output.
-data = js_safe(json.dumps(puzzles, separators=(",", ":")))
+def dump(obj) -> str:
+    # ensure_ascii=True (the default) is load-bearing: it keeps U+2028/U+2029,
+    # which are JS line terminators, out of the output.
+    return js_safe(json.dumps(obj, separators=(",", ":")))
 
-if "__PUZZLE_DATA__" not in template:
-    raise SystemExit("template is missing the __PUZZLE_DATA__ placeholder")
-if "</" in data or "<script" in data.lower():
-    raise SystemExit("refusing to build: puzzle data can escape the script block")
 
-out = HERE / "index.html"
-out.write_text(template.replace("__PUZZLE_DATA__", data))
+def main() -> None:
+    template = TEMPLATE.read_text()
+    practice = json.loads(PRACTICE.read_text())
 
-# The built page must contain only the two script tags the template defines.
-built = out.read_text()
-if built.count("</script>") != 2:
-    raise SystemExit(
-        f"refusing to ship: expected 2 script blocks, found {built.count('</script>')}"
-    )
+    if TODAY.exists():
+        daily = json.loads(TODAY.read_text())
+    else:
+        # Local preview without the decryption key: stand in a practice puzzle
+        # so the page is playable. CI always has today.json.
+        print("today.json missing - using a practice puzzle for local preview",
+              file=sys.stderr)
+        daily = {"number": 0, "date": "preview", "puzzle": practice[0]}
 
-kb = out.stat().st_size / 1024
-print(f"Wrote {out.name} ({kb:.0f} KB) with {len(puzzles)} puzzles.")
+    if daily["puzzle"]["id"] in {p["id"] for p in practice} and daily["number"]:
+        sys.exit("refusing to build: today's puzzle is also in the practice pool")
+
+    out = template
+    for token, value in (
+        ("__DAILY_DATA__", dump(daily)),
+        ("__PRACTICE_DATA__", dump(practice)),
+        ("__ROLLOVER_UTC__", json.dumps(ROLLOVER_UTC)),
+    ):
+        if token not in out:
+            sys.exit(f"template is missing the {token} placeholder")
+        out = out.replace(token, value)
+
+    if "</" in dump(daily) or "</" in dump(practice):
+        sys.exit("refusing to build: puzzle data can escape the script block")
+
+    OUT.write_text(out)
+
+    built = OUT.read_text()
+    if built.count("</script>") != 2:
+        sys.exit(
+            f"refusing to ship: expected 2 script blocks, found {built.count('</script>')}"
+        )
+
+    # The whole point of this pipeline: exactly one daily answer in the artifact.
+    answers = built.count('"score"')
+    expected = len(practice) + 1
+    if answers != expected:
+        sys.exit(f"refusing to ship: expected {expected} scores, found {answers}")
+
+    kb = OUT.stat().st_size / 1024
+    print(f"Wrote {OUT.name} ({kb:.0f} KB): "
+          f"daily #{daily['number']} + {len(practice)} practice puzzles")
+
+
+if __name__ == "__main__":
+    main()
