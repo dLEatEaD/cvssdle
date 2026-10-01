@@ -80,6 +80,16 @@ UI:N/S:U/C:H/I:H/A:H` is 36.5% of the pool, so "always submit 9.8" wins a third
 of the time in *either* mode. That is a property of what gets exploited in the
 real world, not a flaw to engineer away.
 
+**The live readout shows a severity band, not a number.** This is not cosmetic.
+Of the 84 distinct scores a CVSS v3.1 vector can take, exactly one — 9.8 — is
+produced by a *single* vector out of all 2,592. That vector is also the 36.5%
+one above. So a live exact-score readout was a perfect oracle: fiddle the
+picker until it reads 9.8 and you have uniquely located the most likely answer
+in the catalogue, knowing nothing about CVSS at all. A band narrows to 61
+candidates rather than 1, which keeps the "your picks have consequences"
+feedback without handing the answer over. The exact score still appears on
+every submitted attempt, where it costs a try, and on the final reveal.
+
 Vector mode exists because score mode is solvable without knowing any CVSS. The
 answer carries only ~3.4 bits of entropy: 9.8 alone wins 36% of the time, and a
 plain binary search over the observed scores wins **100%** of the time in about

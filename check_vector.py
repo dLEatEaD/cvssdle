@@ -94,6 +94,57 @@ def main() -> None:
             failures.append(
                 f"a partial vector showed a score of {blank['score']!r}; it has none")
 
+        # --- the live readout is a band, never the exact score ---------
+        # Of the 84 distinct scores a vector can take, exactly one - 9.8 - is
+        # produced by a single vector out of all 2,592, and that vector is
+        # 36.5% of the pool. An exact live readout therefore let anyone dial
+        # the picker until it said 9.8 and submit the most likely answer in the
+        # catalogue with no CVSS knowledge whatsoever.
+        oracle = page.evaluate(
+            """() => {
+              localStorage.clear(); setVectorMode(true); startDaily();
+              // The unique 9.8 vector.
+              const nine8 = { AV:'N', AC:'L', PR:'N', UI:'N', S:'U',
+                              C:'H', I:'H', A:'H' };
+              for (const k of HINT_ORDER) vectorPick[k] = nine8[k];
+              renderMetricPicker(); renderVectorPreview();
+              return { readout: document.getElementById('vector-score').textContent,
+                       derived: scoreVector(vectorPick).toFixed(1) };
+            }"""
+        )
+        if oracle["derived"] != "9.8":
+            failures.append(
+                f"the calculator no longer scores the canonical vector 9.8: "
+                f"{oracle['derived']}")
+        if "9.8" in oracle["readout"] or "9." in oracle["readout"]:
+            failures.append(
+                f"the live readout shows the exact score ({oracle['readout']!r}) - "
+                "9.8 pins a unique vector, so this hands over the single most "
+                "common answer in the pool")
+        if oracle["readout"] != "Critical":
+            failures.append(
+                f"expected a severity band in the live readout, got {oracle['readout']!r}")
+
+        # --- the answer is revealed once a vector game ends ------------
+        reveal = page.evaluate(
+            """() => {
+              localStorage.clear(); setVectorMode(true); startDaily();
+              const masked = document.querySelectorAll('.hint.revealed').length;
+              for (const k of HINT_ORDER) vectorPick[k] = parseVector()[k];
+              renderMetricPicker(); renderVectorPreview();
+              document.getElementById('btn-submit-vector').click();
+              return { masked,
+                       after: document.querySelectorAll('.hint.revealed').length,
+                       label: document.getElementById('hints-label').textContent };
+            }"""
+        )
+        if reveal["masked"] != 0:
+            failures.append("metrics were revealed during a vector game")
+        if reveal["after"] != 8:
+            failures.append(
+                f"only {reveal['after']}/8 metrics revealed after the vector game "
+                "ended - the grid stays masked behind question marks")
+
         # Still refused when only seven of eight are chosen.
         partial = page.evaluate(
             """() => {
@@ -163,7 +214,7 @@ def main() -> None:
               const ans = parseVector();
               for (const k of HINT_ORDER) vectorPick[k] = ans[k];
               renderMetricPicker(); renderVectorPreview();
-              const before = document.getElementById('vector-score').textContent;
+              const before = scoreVector(vectorPick).toFixed(1);
               const rows = [...document.querySelectorAll('.metric-row')];
               const opts = [...rows[0].querySelectorAll('.metric-opt')];
               // Pick an Attack Vector that differs from the answer's, so the
@@ -173,7 +224,8 @@ def main() -> None:
               opts[idx].click();
               return { revealed: document.querySelectorAll('.hint.revealed').length,
                        metrics: rows.length,
-                       before, after: document.getElementById('vector-score').textContent,
+                       before, after: scoreVector(vectorPick).toFixed(1),
+                       readout: document.getElementById('vector-score').textContent,
                        scoreAreaHidden: document.getElementById('play-area').hidden };
             }"""
         )
@@ -184,6 +236,11 @@ def main() -> None:
             failures.append(f"expected 8 metric rows, found {v['metrics']}")
         if v["before"] == v["after"]:
             failures.append("the derived score did not change when a metric changed")
+        # The derivation must track the selection, but the player only ever
+        # sees the band it falls in.
+        if any(ch.isdigit() for ch in v["readout"]):
+            failures.append(
+                f"the live readout leaked a number: {v['readout']!r}")
         if not v["scoreAreaHidden"]:
             failures.append("score-mode input is still visible in vector mode")
 

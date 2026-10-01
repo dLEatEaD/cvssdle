@@ -612,7 +612,7 @@ footer a:hover { text-decoration: underline; }
       <div class="vector-live">
         <span class="vector-live-label">Your vector</span>
         <code id="vector-preview"></code>
-        <span class="vector-live-score" id="vector-score"></span>
+        <span class="vector-live-score" id="vector-score" title="Severity band only - the exact score would give the answer away"></span>
       </div>
       <button class="primary wide" id="btn-submit-vector">Submit vector</button>
       <div class="scale-hint" id="vector-tries"></div>
@@ -2190,9 +2190,16 @@ function renderMetricPicker() {
 function renderVectorPreview() {
   const done = vectorComplete(vectorPick);
   $("vector-preview").textContent = vectorString(vectorPick);
-  // No score until the vector is whole: a partial selection has no CVSS score,
-  // and showing one invites treating the number as the puzzle again.
-  $("vector-score").textContent = done ? scoreVector(vectorPick).toFixed(1) : "\u2014";
+  // Severity band, never the exact number. The number is a perfect oracle:
+  // of the 84 distinct scores a vector can take, exactly one - 9.8 - is
+  // produced by a single vector out of all 2,592. That vector is also 36.5% of
+  // the KEV pool, so a live score readout let anyone dial the picker until it
+  // read 9.8 and submit the most likely answer in the catalogue knowing
+  // nothing at all. A band narrows to 61 candidates instead of 1, which keeps
+  // the "your picks have consequences" feedback without handing over the
+  // answer. The exact score still appears on every submitted attempt, where it
+  // costs a try, and on the final reveal.
+  $("vector-score").textContent = done ? severityFor(scoreVector(vectorPick)) : "\u2014";
 
   const chosen = HINT_ORDER.filter((k) => vectorPick[k]).length;
   const btn = $("btn-submit-vector");
@@ -2268,6 +2275,10 @@ function submitVector() {
   renderVectorPreview();
   applyMode();
   if (finished) {
+    // The hint grid is masked throughout vector mode, so it has to be
+    // re-rendered once the game ends or the answer stays hidden behind eight
+    // question marks while the result card shows the full vector.
+    renderHints();
     if (!practiceMode) { recordStats(); persist(); }
     renderResult();
   } else if (!practiceMode) {
