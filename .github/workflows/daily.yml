@@ -2,6 +2,11 @@ name: Publish daily puzzle
 
 # Publishes one puzzle per day. Only that day's answer reaches the built site;
 # the rest of the pool stays encrypted in puzzles.daily.enc.
+#
+# Also publishes a staging copy at /preview/ built from the `preview` branch,
+# so changes can be played against real data before they reach players. Pages
+# allows a single deployment source, so both live in one artifact - but the
+# preview build is isolated and non-fatal: if it fails, production still ships.
 
 on:
   schedule:
@@ -11,7 +16,7 @@ on:
     - cron: "5 5 * * *"
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, preview]
     # Rebuild when the game itself changes, not on docs-only edits.
     paths:
       - "game.template.html"
@@ -35,7 +40,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # Production always builds from main, whichever branch triggered this.
+      # A push to `preview` must never publish preview code to the live URL.
       - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: prod
 
       - uses: actions/setup-python@v5
         with:
@@ -45,29 +55,74 @@ jobs:
         run: pip install --quiet cryptography
 
       - name: Check the schedule matches the client countdown
+        working-directory: prod
         run: python3 check_schedule.py
 
       - name: Select today's puzzle
+        working-directory: prod
         env:
           PUZZLE_KEY: ${{ secrets.PUZZLE_KEY }}
           PUZZLE_SEED: ${{ secrets.PUZZLE_SEED }}
         run: python3 pick_daily.py
 
       - name: Build site
+        working-directory: prod
         run: python3 build_site.py
 
       - name: Verify no future answers were published
+        working-directory: prod
         env:
           PUZZLE_KEY: ${{ secrets.PUZZLE_KEY }}
         run: python3 verify_build.py
 
-      - name: Stage the published site
+      - name: Stage production
         # Publish only what the browser needs. Build scripts, the encrypted
         # pool, and today.json (which holds the answer in plaintext) stay out.
         run: |
           mkdir -p dist
-          cp index.html .nojekyll dist/
-          ls -la dist
+          cp prod/index.html prod/.nojekyll dist/
+
+      # ---- everything below is staging, and must not be able to fail prod ----
+
+      - name: Check out the preview branch
+        id: preview_checkout
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          ref: preview
+          path: staging
+
+      - name: Build preview
+        id: preview_build
+        if: steps.preview_checkout.outcome == 'success'
+        continue-on-error: true
+        working-directory: staging
+        env:
+          PUZZLE_KEY: ${{ secrets.PUZZLE_KEY }}
+          PUZZLE_SEED: ${{ secrets.PUZZLE_SEED }}
+        run: |
+          python3 check_schedule.py
+          python3 pick_daily.py
+          python3 build_site.py
+          python3 verify_build.py
+
+      - name: Stage preview
+        if: steps.preview_build.outcome == 'success'
+        run: |
+          mkdir -p dist/preview
+          cp staging/index.html dist/preview/
+          echo "preview published at /preview/"
+
+      - name: Report preview status
+        if: steps.preview_build.outcome != 'success'
+        run: |
+          echo "::warning::Preview build skipped or failed - production is unaffected."
+
+      - name: Confirm production artifact is intact
+        # Last line of defence: never deploy without a production page.
+        run: |
+          test -s dist/index.html || { echo "production page missing"; exit 1; }
+          echo "dist contents:"; find dist -type f | sort
 
       - uses: actions/upload-pages-artifact@v3
         with:

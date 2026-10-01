@@ -1,0 +1,54 @@
+name: CI
+
+# Runs on code changes, not on the daily publish. The scheduled publish must
+# stay lean and dependency-light - it is the job players depend on - so the
+# heavier browser-based checks live here instead, where a failure blocks a bad
+# change from reaching main rather than blocking today's puzzle.
+
+on:
+  push:
+    branches: [main, preview]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install --quiet cryptography playwright
+
+      - name: Install browser
+        run: python3 -m playwright install --with-deps chromium
+
+      - name: Static consistency checks
+        run: python3 check_schedule.py
+
+      - name: Build a page to test against
+        env:
+          PUZZLE_KEY: ${{ secrets.PUZZLE_KEY }}
+          PUZZLE_SEED: ${{ secrets.PUZZLE_SEED }}
+        run: |
+          python3 pick_daily.py
+          python3 build_site.py
+
+      - name: Verify no future answers leak
+        env:
+          PUZZLE_KEY: ${{ secrets.PUZZLE_KEY }}
+        run: python3 verify_build.py
+
+      - name: Verify saved games still load
+        run: python3 check_compat.py
+
+      - name: Verify the game is playable
+        run: python3 check_playable.py

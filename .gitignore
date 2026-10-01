@@ -12,3 +12,6 @@ today.json
 
 # Built by the daily workflow and deployed as a Pages artifact.
 index.html
+
+# Local CI venv for running the browser-based gates.
+.venv/

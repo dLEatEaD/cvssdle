@@ -71,10 +71,40 @@ did by shipping all 400 puzzles and selecting one client-side. Instead:
 | `pick_daily.py` | Selects today's puzzle from the daily pool. Runs in CI. |
 | `build_site.py` | Builds `index.html` from the template, today's puzzle, and the practice pool. |
 | `verify_build.py` | CI gate: proves no future answers reached the build. |
+| `check_compat.py` | CI gate: saved games from the live site must still load. |
+| `check_playable.py` | CI gate: plays a round and asserts the core loop works. |
+| `check_schedule.py` | CI gate: cron, countdown and EPOCH must agree. |
 | `build_quips.py` | Source of the 210 end-of-game quips. |
 | `play.sh` | Serve locally and open a browser. |
 
 `index.html`, `puzzles.json` and `today.json` are generated and gitignored.
+
+## Environments
+
+| | URL | Built from |
+| --- | --- | --- |
+| Production | `https://dleatead.github.io/cvssdle/` | `main` |
+| Staging | `https://dleatead.github.io/cvssdle/preview/` | `preview` branch |
+
+Pages allows one deployment source, so both are published from a single
+artifact. The preview build is isolated and non-fatal: if it fails, the
+workflow warns and production ships anyway. Production is always built from
+`main` regardless of which branch triggered the run, so pushing to `preview`
+cannot publish preview code to the live URL.
+
+Work lands on `preview` first:
+
+```bash
+git switch -c preview        # first time only
+git push -u origin preview
+```
+
+Then merge to `main` once it has been played.
+
+The daily publish deliberately runs only the light checks - it is the job
+players depend on, so it carries no browser dependency. The heavier gates
+(`check_compat.py`, `check_playable.py`) run in `ci.yml` on every push, where a
+failure blocks a bad change rather than blocking today's puzzle.
 
 ## Deploying to GitHub Pages
 
