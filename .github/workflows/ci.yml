@@ -32,7 +32,9 @@ jobs:
         run: python3 -m playwright install --with-deps chromium
 
       - name: Static consistency checks
-        run: python3 check_schedule.py
+        run: |
+          python3 check_schedule.py
+          python3 check_workflows.py
 
       - name: Build a page to test against
         env:

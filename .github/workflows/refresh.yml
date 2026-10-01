@@ -42,6 +42,8 @@ jobs:
       - name: Re-split the pools
         env:
           PUZZLE_KEY: ${{ secrets.PUZZLE_KEY }}
+          # split_pool.py needs the seed to order newly added puzzles.
+          PUZZLE_SEED: ${{ secrets.PUZZLE_SEED }}
         run: python3 split_pool.py --practice "${{ inputs.practice_size || 150 }}"
 
       - name: Confirm no plaintext answers are staged
