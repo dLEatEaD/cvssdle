@@ -22,14 +22,9 @@ on:
     # preview branch, so it refreshes on the next main push, the next scheduled
     # run, or an on-demand run from the Actions tab.
     branches: [main]
-    # Rebuild when the game itself changes, not on docs-only edits.
-    paths:
-      - "game.template.html"
-      - "build_site.py"
-      - "pick_daily.py"
-      - "puzzles.daily.enc"
-      - "puzzles.practice.json"
-      - ".github/workflows/daily.yml"
+    # No paths filter. It saved a one-minute build and cost predictability:
+    # preview refreshes on a main build, so a filtered-out push left the
+    # staging site silently stale with no obvious way to refresh it.
 
 permissions:
   contents: read
