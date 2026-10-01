@@ -2127,9 +2127,54 @@ let vectorTries = [];
    answer and beat the people who understand the rubric" failure vector mode
    exists to remove, so there is no safe default: the player has to choose all
    eight. */
+/* Option order within each metric row, shuffled per puzzle.
+   CVSS lists every metric's values worst-first, so the leftmost option in all
+   eight rows spelled AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H - the 9.8 vector, and
+   274 of the 751 puzzles in the pool. Clicking straight down the left edge of
+   the picker therefore won better than one day in three, with no reading and
+   no CVSS at all. Removing the pre-filled default only made that eight clicks
+   instead of none.
+
+   The order is derived from the puzzle id alone. It must not depend on the
+   answer, or the layout would leak it; seeded this way the left column spells
+   a uniformly random vector, which is the answer 1 time in 2,592 rather than
+   1 in 3. It has to be stable too - renderMetricPicker re-runs on every click,
+   and reshuffling would move options out from under the cursor. */
+let metricOrder = {};
+
+function orderSeed(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function buildMetricOrder(id) {
+  let s = orderSeed(id || "cvssdle") || 1;
+  const next = () => {
+    s ^= (s << 13); s >>>= 0;
+    s ^= (s >>> 17);
+    s ^= (s << 5);  s >>>= 0;
+    return s;
+  };
+  const out = {};
+  for (const k of HINT_ORDER) {
+    const codes = Object.keys(METRIC_NAMES[k][1]);
+    for (let i = codes.length - 1; i > 0; i--) {
+      const j = next() % (i + 1);
+      const t = codes[i]; codes[i] = codes[j]; codes[j] = t;
+    }
+    out[k] = codes;
+  }
+  return out;
+}
+
 function resetVector() {
   vectorPick = {};
   vectorTries = [];
+  metricOrder = buildMetricOrder(puzzle && puzzle.id);
 }
 
 /* Every metric chosen - the only state from which a vector may be submitted. */
@@ -2166,7 +2211,7 @@ function renderMetricPicker() {
 
     const opts = document.createElement("div");
     opts.className = "metric-opts";
-    for (const code of Object.keys(values)) {
+    for (const code of (metricOrder[key] || Object.keys(values))) {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "metric-opt";

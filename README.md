@@ -80,8 +80,19 @@ UI:N/S:U/C:H/I:H/A:H` is 36.5% of the pool, so "always submit 9.8" wins a third
 of the time in *either* mode. That is a property of what gets exploited in the
 real world, not a flaw to engineer away.
 
-**The live readout shows a severity band, not a number.** This is not cosmetic.
-Of the 84 distinct scores a CVSS v3.1 vector can take, exactly one — 9.8 — is
+**The option order in each row is shuffled per puzzle.** CVSS lists every
+metric's values worst-first, so the leftmost option in all eight rows spelled
+`AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H` — the 9.8 vector again. Clicking straight
+down the left edge of the picker won 36.5% of the pool outright, with no
+reading and no CVSS. Removing the pre-filled default had only turned that from
+zero clicks into eight. The order is seeded from the puzzle id, never from the
+answer, so the left column now spells a uniformly random vector: right about 1
+time in 2,592 instead of 1 in 3. It is stable across re-renders and reloads,
+because the picker re-renders on every click and options must not move under
+the cursor.
+
+**The live readout shows a severity band, not a number.** Of the 84 distinct
+scores a CVSS v3.1 vector can take, exactly one — 9.8 — is
 produced by a *single* vector out of all 2,592. That vector is also the 36.5%
 one above. So a live exact-score readout was a perfect oracle: fiddle the
 picker until it reads 9.8 and you have uniquely located the most likely answer

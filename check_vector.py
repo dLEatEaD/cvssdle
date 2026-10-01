@@ -206,6 +206,64 @@ def main() -> None:
         if first != "\U0001F7E9" * 7 + "\u2B1C":
             failures.append(
                 f"the share grid leaks metric positions: {first!r}")
+        # --- the left column must not spell a vector ------------------
+        # CVSS lists each metric's values worst-first, so the first option in
+        # all eight rows spelled AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H - the 9.8
+        # vector, and 36.5% of the pool. Clicking straight down the left edge
+        # won better than one day in three, with no reading at all.
+        left = page.evaluate(
+            """() => {
+              localStorage.clear(); setVectorMode(true); startDaily();
+              // Click the leftmost option in every row, as a player skimming
+              // the form would. The picker re-renders each time.
+              for (let i = 0; i < HINT_ORDER.length; i++) {
+                const rows = [...document.querySelectorAll('.metric-row')];
+                rows[i].querySelectorAll('.metric-opt')[0].click();
+              }
+              const spelled = { ...vectorPick };
+              const canon = { AV:'N', AC:'L', PR:'N', UI:'N', S:'U',
+                              C:'H', I:'H', A:'H' };
+              // Order must not move under the cursor as the picker re-renders.
+              const snap = () => [...document.querySelectorAll('.metric-row')]
+                .map(r => [...r.querySelectorAll('.metric-opt')]
+                           .map(o => o.textContent).join('|')).join(';');
+              const before = snap();
+              renderMetricPicker();
+              const after = snap();
+              // And it must not be derived from the answer.
+              let hits = 0;
+              for (let i = 0; i < 4000; i++) {
+                const o = buildMetricOrder('CVE-GATE-' + i);
+                if (HINT_ORDER.every(k => o[k][0] === canon[k])) hits++;
+              }
+              return {
+                spelledCanonical: HINT_ORDER.every(k => spelled[k] === canon[k]),
+                stable: before === after,
+                sameAsSpec: HINT_ORDER.filter(k =>
+                  [...document.querySelectorAll('.metric-row')][HINT_ORDER.indexOf(k)]
+                    .querySelector('.metric-opt').textContent ===
+                  Object.values(METRIC_NAMES[k][1])[0]).length,
+                canonHits: hits,
+              };
+            }"""
+        )
+        if left["spelledCanonical"]:
+            failures.append(
+                "the leftmost option in every row spells the 9.8 vector - "
+                "clicking down the left column wins 36.5% of the pool outright")
+        if not left["stable"]:
+            failures.append(
+                "option order changes when the picker re-renders - it re-renders "
+                "on every click, so options would move under the cursor")
+        if left["sameAsSpec"] == len(["AV","AC","PR","UI","S","C","I","A"]):
+            failures.append("option order is unshuffled in every row")
+        # Seeded from the puzzle id alone, the left column should land on the
+        # canonical vector about 1 time in 2,592, not systematically.
+        if left["canonHits"] > 12:
+            failures.append(
+                f"option shuffle is biased toward the canonical vector: "
+                f"{left['canonHits']}/4000 (expect ~1.5)")
+
         # --- hints stay locked, and the score is derived --------------
         v = page.evaluate(
             """() => {
@@ -216,12 +274,12 @@ def main() -> None:
               renderMetricPicker(); renderVectorPreview();
               const before = scoreVector(vectorPick).toFixed(1);
               const rows = [...document.querySelectorAll('.metric-row')];
+              // Option order is shuffled per puzzle, so find the button by its
+              // label rather than assuming a position.
+              const want = Object.entries(METRIC_NAMES.AV[1])
+                             .find(([c]) => c !== ans.AV)[1];
               const opts = [...rows[0].querySelectorAll('.metric-opt')];
-              // Pick an Attack Vector that differs from the answer's, so the
-              // derived score is guaranteed to move.
-              const codes = Object.keys(METRIC_NAMES.AV[1]);
-              const idx = codes.findIndex(c => c !== ans.AV);
-              opts[idx].click();
+              opts.find(o => o.textContent === want).click();
               return { revealed: document.querySelectorAll('.hint.revealed').length,
                        metrics: rows.length,
                        before, after: scoreVector(vectorPick).toFixed(1),
