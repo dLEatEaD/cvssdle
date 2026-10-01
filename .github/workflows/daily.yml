@@ -31,10 +31,14 @@ permissions:
   pages: write
   id-token: write
 
-# Never publish two builds at once, but let a newer run supersede a queued one.
+# Pages allows one deployment at a time. Two runs reaching deploy together -
+# easy to trigger, since pushes to main and preview both publish - makes one
+# fail on a lock it cannot take. Superseding the queued run is correct here:
+# every run rebuilds from scratch, so the newest produces the same or fresher
+# output, and a cancelled run never leaves the site half-published.
 concurrency:
   group: pages
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
