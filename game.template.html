@@ -472,15 +472,23 @@ button.wide { width: 100%; }
   font-family: Consolas, "Courier New", Courier, monospace;
   font-size: 0.7rem; padding: 4px 8px; border-radius: 6px;
   border: 1px solid var(--cp-border); white-space: nowrap;
+  background: var(--cp-surface-soft); color: var(--cp-text-muted);
 }
-.vcell.hit {
+/* Only the solving attempt is coloured. Colouring individual metrics on a
+   losing attempt is what made the mode solvable without reading anything. */
+.vtry.solved .vcell {
   background: rgba(34,197,94,.14); border-color: rgba(34,197,94,.45);
   color: var(--cp-success); font-weight: 700;
 }
-.vcell.miss { background: var(--cp-surface-soft); color: var(--cp-text-muted); }
+.vtry-count {
+  margin-left: auto; font-size: 0.72rem; font-weight: 700;
+  color: var(--cp-text-muted); white-space: nowrap;
+}
+.vtry-count b { color: var(--cp-accent); }
 .vtry-score {
-  margin-left: auto; font-family: Consolas, "Courier New", Courier, monospace;
+  font-family: Consolas, "Courier New", Courier, monospace;
   font-weight: 700; font-size: 0.82rem; color: var(--cp-text-muted);
+  margin-left: 10px;
 }
 .mode-toggle {
   display: flex; gap: 0; border: 1px solid var(--cp-border);
@@ -640,8 +648,8 @@ footer a:hover { text-decoration: underline; }
   <p class="help-sub">Four tries to pick all eight metrics. The score is derived from your choice.</p>
   <ul>
     <li>No metrics are revealed &mdash; they're the answer.</li>
-    <li>Each attempt tells you which individual metrics you got <b>right</b>, so you can keep the ones that landed.</li>
-    <li>This is the harder mode, and the honest one: the base score has few enough possible values that you can binary-search it without knowing any CVSS at all. Eight metrics have 2,592 combinations and no shortcut &mdash; you have to read the advisory.</li>
+    <li>Each attempt tells you <b>how many</b> of the eight you got right &mdash; not which ones. Being told which would let you lock the greens and cycle the rest, and the mode would be solvable without reading anything.</li>
+    <li>This is the harder mode, and the honest one: the base score has few enough possible values that you can binary-search it without knowing any CVSS at all. Eight metrics have 2,592 combinations, and with only a count to go on there is no way through by hand except reading the advisory.</li>
   </ul>
 
   <p class="help-lock"><b>One mode per puzzle.</b> Your first guess of the day locks the mode in, because finishing either mode shows you the full answer &mdash; the score <i>and</i> the vector. The other mode unlocks with tomorrow's puzzle. Practice puzzles are exempt: switch freely there, nothing is recorded.</p>
@@ -985,9 +993,16 @@ function renderGuesses() {
 
 function shareGrid() {
   if (vectorMode()) {
-    // One row per attempt, one square per metric: green for a correct metric.
+    // One row per attempt, greens equal to the number of correct metrics.
+    // Sorted, so the grid conveys the count and not which metrics they were -
+    // a positional grid would hand a recipient the same per-metric feedback
+    // the game itself deliberately withholds.
     return vectorTries
-      .map((t) => HINT_ORDER.map((k) => (t.correct[k] ? "\uD83D\uDFE9" : "\u2B1C")).join(""))
+      .map((t) => {
+        const hits = HINT_ORDER.filter((k) => t.correct[k]).length;
+        return "\uD83D\uDFE9".repeat(hits) +
+               "\u2B1C".repeat(HINT_ORDER.length - hits);
+      })
       .join("\n");
   }
   return guesses.map((g) => {
@@ -2191,7 +2206,13 @@ function renderVectorPreview() {
   const left = VECTOR_TRIES - vectorTries.length;
   $("vector-tries").textContent =
     left + (left === 1 ? " try left" : " tries left") +
-    " \u00b7 green means that metric is correct";
+    " \u00b7 you are told how many metrics are right, not which";
+}
+
+/* How many metrics an attempt got right. The count is the only feedback the
+   player receives - see the note on renderVectorTries. */
+function vectorHits(correct) {
+  return HINT_ORDER.filter((k) => correct[k]).length;
 }
 
 function renderVectorTries() {
@@ -2199,13 +2220,25 @@ function renderVectorTries() {
   wrap.innerHTML = "";
   for (const t of vectorTries) {
     const row = document.createElement("div");
-    row.className = "vtry";
+    const hits = vectorHits(t.correct);
+    const solved = hits === HINT_ORDER.length;
+    row.className = "vtry" + (solved ? " solved" : "");
     for (const k of HINT_ORDER) {
       const cell = document.createElement("span");
-      cell.className = "vcell " + (t.correct[k] ? "hit" : "miss");
+      // Deliberately uncoloured. Marking each metric right or wrong let a
+      // player lock the greens and cycle the greys, which solves any vector in
+      // three attempts with no CVSS knowledge at all - it was how this mode got
+      // beaten by accident. The player sees what they picked and how many
+      // landed, never which ones.
+      cell.className = "vcell";
       cell.textContent = k + ":" + t.pick[k];
       row.appendChild(cell);
     }
+    const cnt = document.createElement("span");
+    cnt.className = "vtry-count";
+    cnt.innerHTML = "<b>" + hits + "</b> of " + HINT_ORDER.length + " correct";
+    row.appendChild(cnt);
+
     const sc = document.createElement("span");
     sc.className = "vtry-score";
     sc.textContent = t.score.toFixed(1);
@@ -2246,8 +2279,7 @@ function submitVector() {
    the share grid and the result line, so progress is visible even on a loss. */
 function vectorBest() {
   if (!vectorTries.length) return 0;
-  return Math.max(...vectorTries.map((t) =>
-    HINT_ORDER.filter((k) => t.correct[k]).length));
+  return Math.max(...vectorTries.map((t) => vectorHits(t.correct)));
 }
 
 /* Practice is capped per day. Unlimited practice makes the daily puzzle feel

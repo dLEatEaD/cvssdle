@@ -57,7 +57,28 @@ file — no external requests at runtime.
 revealed per miss.
 
 **Build the vector** — pick all eight metrics in four tries; the game derives
-the score from your selection and tells you which metrics are right.
+the score from your selection and tells you **how many** metrics are right —
+never which ones.
+
+That distinction is the whole mode. The first cut marked each metric right or
+wrong, which sounds helpful and is fatal: you lock the greens, cycle the greys,
+and the vector falls out. Measured against the pool, that solves **100% of 751
+puzzles in at most three attempts with no CVSS knowledge at all** — the same
+failure as score mode's binary search, in a mode built specifically to avoid it.
+It also meant skill stopped mattering: a player getting half the metrics right
+from the advisory won exactly as often as one getting 95% right. Both 100%.
+
+With a bare count, the numbers separate again:
+
+| | by hand, zero CVSS knowledge | 50%-skill player | 95%-skill player |
+| --- | --- | --- | --- |
+| per-metric feedback | 100% | 100% | 100% |
+| count only | 37.5% | 31.6% | 100% |
+
+The residual 37.5% is not the feedback, it is the catalogue: `AV:N/AC:L/PR:N/
+UI:N/S:U/C:H/I:H/A:H` is 36.5% of the pool, so "always submit 9.8" wins a third
+of the time in *either* mode. That is a property of what gets exploited in the
+real world, not a flaw to engineer away.
 
 Vector mode exists because score mode is solvable without knowing any CVSS. The
 answer carries only ~3.4 bits of entropy: 9.8 alone wins 36% of the time, and a
@@ -65,9 +86,17 @@ plain binary search over the observed scores wins **100%** of the time in about
 five guesses. Someone who memorises six numbers beats someone who understands
 the rubric.
 
-Building the vector has 2,592 combinations and no shortcut — you have to read
-the advisory. The in-game calculator implements CVSS v3.1 §7.1 directly and is
-held to NVD's published score for every puzzle in the pool by `check_cvss.py`.
+Building the vector has 2,592 combinations, and the only practical route is
+reading the advisory. The in-game calculator implements CVSS v3.1 §7.1 directly
+and is held to NVD's published score for every puzzle in the pool by
+`check_cvss.py`.
+
+To be precise about the limit: a *scripted* constraint solver that eliminates
+every vector inconsistent with the counts so far still wins about 89% in four
+tries. 2,592 combinations is not a large space. The bar this mode defends is
+"cannot be beaten by hand without reading", not "cannot be beaten by code" —
+and the earlier per-metric feedback failed even that bar, by hand, on the first
+try somebody poked it.
 
 **Nothing is pre-selected.** The first cut of vector mode defaulted every metric
 to its worst value, which spells `AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H` — CVSS

@@ -8,6 +8,8 @@ between modes cannot corrupt either board.
 
 Checks the things that would quietly ruin it:
   - score mode stays the default, so nobody is opted in by surprise
+  - no metric is pre-selected, and an incomplete vector cannot be submitted
+  - feedback is a count, never a per-metric map
   - the metric hints stay locked, since in vector mode they are the answer
   - the derived score tracks the player's selection
   - a solved vector wins, four wrong attempts lose
@@ -107,6 +109,52 @@ def main() -> None:
         if not partial["disabled"] or partial["tries"]:
             failures.append("a seven-of-eight vector was accepted")
 
+        # --- feedback is a count, never a per-metric map ---------------
+        # Marking each metric right or wrong let a player lock the correct ones
+        # and cycle the rest: that solves 100% of the pool in three attempts
+        # with no CVSS knowledge, and it is how this mode was first beaten.
+        # The player learns how many landed, never which.
+        fbk = page.evaluate(
+            """() => {
+              localStorage.clear(); setVectorMode(true); startDaily();
+              const ans = parseVector();
+              // Get exactly seven of eight right - the state that used to give
+              // the answer away completely.
+              for (const k of HINT_ORDER) vectorPick[k] = ans[k];
+              const opts = Object.keys(METRIC_NAMES.AV[1]);
+              vectorPick.AV = opts.find(o => o !== ans.AV);
+              renderMetricPicker(); renderVectorPreview();
+              document.getElementById('btn-submit-vector').click();
+              const row = document.querySelector('.vtry');
+              const cells = [...row.querySelectorAll('.vcell')];
+              return {
+                hitCells: cells.filter(c => c.className.includes('hit')).length,
+                missCells: cells.filter(c => c.className.includes('miss')).length,
+                distinctClasses: [...new Set(cells.map(c => c.className.trim()))],
+                rowText: row.textContent,
+                grid: shareGrid(),
+                finished,
+              };
+            }"""
+        )
+        if fbk["hitCells"] or fbk["missCells"]:
+            failures.append(
+                "attempt rows still mark individual metrics right or wrong - "
+                "lock-the-greens solves the whole pool in three tries")
+        if len(fbk["distinctClasses"]) != 1:
+            failures.append(
+                f"metric cells are styled differently from each other: "
+                f"{fbk['distinctClasses']} - that is per-metric feedback")
+        if "7" not in fbk["rowText"]:
+            failures.append(f"the attempt row does not report the count: {fbk['rowText']!r}")
+        if fbk["finished"]:
+            failures.append("a seven-of-eight attempt should not end the game")
+        # The share grid must convey the count only - a positional grid hands a
+        # recipient exactly the feedback the game withholds.
+        first = fbk["grid"].split("\n")[0]
+        if first != "\U0001F7E9" * 7 + "\u2B1C":
+            failures.append(
+                f"the share grid leaks metric positions: {first!r}")
         # --- hints stay locked, and the score is derived --------------
         v = page.evaluate(
             """() => {
