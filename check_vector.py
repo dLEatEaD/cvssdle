@@ -93,7 +93,9 @@ def main() -> None:
                        grid: shareGrid() };
             }"""
         )
-        if not win["finished"] or "solved" not in win["heading"].lower():
+        # A one-attempt win earns its own heading ("nailed"), so match the
+        # outcome rather than one specific word.
+        if not win["finished"] or win["heading"].lower().startswith("vector unsolved"):
             failures.append(f"a correct vector did not win: {win['heading']!r}")
         if win["grid"].count("\U0001F7E9") != 8:
             failures.append("a winning vector grid should be eight greens")
@@ -128,9 +130,11 @@ def main() -> None:
             failures.append(f"vector loss fragment is {lose['frag']!r}, expected .vx")
 
         # --- the two modes keep separate boards -----------------------
-        # Finishing the score game first matters: an unfinished board looks
-        # harmless when it bleeds across, but a finished one shows the other
-        # mode a completed result it never played.
+        # Switching mid-puzzle is now refused outright (see check_modes.py), so
+        # the invariant that still matters is in restore(): a board saved in one
+        # mode must never be loaded as the other. That is what protects a player
+        # whose lock is absent - an upgrade from a pre-lock build, or a cleared
+        # lock - from being shown a finished result they never played.
         sep = page.evaluate(
             """() => {
               localStorage.clear();
@@ -142,24 +146,33 @@ def main() -> None:
               i.value = DAILY.puzzle.score.toFixed(1); g.click();   // finish it
               const scoreRows = document.querySelectorAll('.row:not(.empty)').length;
               const scoreFinished = !document.getElementById('result').hidden;
+              const saved = load(KEY_STATE, null);
 
-              // Switch to vector: it must be a fresh, playable board.
-              document.getElementById('mode-vector').click();
+              // Drop the lock and flip the preference, simulating a player who
+              // arrives in vector mode with a score board already on disk.
+              localStorage.removeItem(KEY_LOCK);
+              setVectorMode(true);
+              startDaily();
               const vec = {
+                restored: restore(),
                 rows: document.querySelectorAll('.vtry').length,
                 finished: !document.getElementById('result').hidden,
                 playable: !document.getElementById('vector-area').hidden,
               };
 
-              // Switch back: the finished score board must still be intact.
-              document.getElementById('mode-score').click();
-              const backRows = document.querySelectorAll('.row:not(.empty)').length;
-              const backFinished = !document.getElementById('result').hidden;
-              return { scoreRows, scoreFinished, vec, backRows, backFinished };
+              // The score board itself must still be on disk, untouched.
+              const after = load(KEY_STATE, null);
+              return { scoreRows, scoreFinished, vec,
+                       savedMode: saved && saved.mode,
+                       keptMode: after && after.mode };
             }"""
         )
         if sep["scoreRows"] != 2 or not sep["scoreFinished"]:
             failures.append("the score game did not complete as expected")
+        if sep["savedMode"] != "score":
+            failures.append("the finished score board was not saved as a score board")
+        if sep["vec"]["restored"]:
+            failures.append("a score board was restored as a vector board")
         if sep["vec"]["rows"] != 0:
             failures.append("switching to vector mode carried the score board across")
         if sep["vec"]["finished"]:
@@ -167,27 +180,30 @@ def main() -> None:
                 "vector mode showed a finished result inherited from score mode")
         if not sep["vec"]["playable"]:
             failures.append("vector mode was not playable after switching")
-        if sep["backRows"] != 2 or not sep["backFinished"]:
-            failures.append("switching back lost the finished score board")
 
         # Vector progress must likewise not bleed into score mode.
         sep2 = page.evaluate(
             """() => {
               localStorage.clear();
-              document.getElementById('mode-vector').click();
+              setVectorMode(true);
               startDaily();
               Object.assign(vectorPick, parseVector());
               renderMetricPicker(); renderVectorPreview();
               document.getElementById('btn-submit-vector').click();   // solved
               const vectorFinished = !document.getElementById('result').hidden;
-              document.getElementById('mode-score').click();
+              localStorage.removeItem(KEY_LOCK);
+              setVectorMode(false);
+              startDaily();
               return { vectorFinished,
+                       restored: restore(),
                        scoreRows: document.querySelectorAll('.row:not(.empty)').length,
                        scoreFinished: !document.getElementById('result').hidden };
             }"""
         )
         if not sep2["vectorFinished"]:
             failures.append("the vector game did not complete as expected")
+        if sep2["restored"]:
+            failures.append("a vector board was restored as a score board")
         if sep2["scoreRows"] != 0 or sep2["scoreFinished"]:
             failures.append("a solved vector leaked a finished board into score mode")
 

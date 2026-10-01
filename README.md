@@ -39,8 +39,10 @@ quietly drills CVSS fluency.
 - **Challenge links**: your result is encoded in the URL hash, so sending it to
   a colleague shows them how you did and invites them to try the same puzzle.
   No backend, nothing stored, and the answer is never in the link.
-- 210 end-of-game quips: only a first-guess win earns "Nailed it", and each
-  of the other outcomes has 30 of its own.
+- 390 end-of-game quips: only a first-guess win earns "Nailed it", and each
+  of the other outcomes has 30 of its own. Vector mode gets its own 150, since
+  a line like "six attempts" is simply wrong in a four-try game and
+  "you brute-forced it" is the one thing vector mode makes impossible.
 - Practice mode for unlimited extra puzzles.
 
 - Dark SOC-console theme by default (near-black navy `#030711`, sky-blue
@@ -69,6 +71,21 @@ held to NVD's published score for every puzzle in the pool by `check_cvss.py`.
 
 Mode is opt-in and remembered per browser. The two modes keep separate saved
 boards, so switching does not destroy a game in progress.
+
+**One mode per puzzle.** Your first move of the day commits the mode, and the
+other one unlocks with tomorrow's puzzle. This is not arbitrary: finishing
+either mode puts the *whole* answer on screen — score mode reveals a metric per
+miss and prints the full vector at the end, vector mode prints the derived
+score. Without the lock, switching mode is not a mode switch, it is a lookup:
+play score mode, read the vector off the result card, switch, and solve vector
+in one try. Worse, abandoning the first mode before it finished dodged the
+`recordStats` day guard, so the laundered win recorded as genuine. The leak
+lives in the player's memory rather than in storage, so hiding the reveal would
+not have fixed it. Practice puzzles are exempt — they draw a different CVE each
+time and record nothing, so there is nothing to launder.
+
+Each mode also keeps its own win distribution, since four tries and six tries
+do not share a histogram.
 
 ## How the answers stay hidden
 
@@ -109,9 +126,10 @@ did by shipping all 400 puzzles and selecting one client-side. Instead:
 | `check_social.py` | CI gate: partial credit and challenge links. |
 | `check_cvss.py` | CI gate: the in-game CVSS calculator must match NVD. |
 | `check_vector.py` | CI gate: vector mode stays opt-in and never leaks the answer. |
+| `check_modes.py` | CI gate: one mode per puzzle, and honest per-mode stats. |
 | `check_workflows.py` | CI gate: workflow steps must pass the secrets their scripts need. |
 | `check_schedule.py` | CI gate: cron, countdown and EPOCH must agree. |
-| `build_quips.py` | Source of the 210 end-of-game quips. |
+| `build_quips.py` | Source of the 390 end-of-game quips. |
 | `play.sh` | Serve locally and open a browser. |
 
 `index.html`, `puzzles.json` and `today.json` are generated and gitignored.

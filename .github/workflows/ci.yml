@@ -66,3 +66,6 @@ jobs:
 
       - name: Verify vector mode
         run: python3 check_vector.py
+
+      - name: Verify one mode per puzzle
+        run: python3 check_modes.py
