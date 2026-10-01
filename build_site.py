@@ -11,6 +11,7 @@ Usage:
 """
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -62,7 +63,16 @@ def main() -> None:
         # so the page is playable. CI always has today.json.
         print("today.json missing - using a practice puzzle for local preview",
               file=sys.stderr)
-        daily = {"number": 0, "date": "preview", "puzzle": practice[0]}
+        daily = {"number": 0, "date": "preview", "puzzle": practice[0],
+                 "next": practice[1]["vendor"] if len(practice) > 1 else ""}
+
+    # The teaser must be a bare vendor name and nothing else. Guard it here so
+    # a future change cannot quietly start leaking tomorrow's product or score.
+    teaser = daily.get("next", "")
+    if not isinstance(teaser, str):
+        sys.exit("refusing to build: teaser must be a string")
+    if len(teaser) > 40 or any(c in teaser for c in "0123456789"):
+        sys.exit(f"refusing to build: teaser looks like more than a vendor: {teaser!r}")
 
     if daily["puzzle"]["id"] in {p["id"] for p in practice} and daily["number"]:
         sys.exit("refusing to build: today's puzzle is also in the practice pool")
@@ -88,8 +98,14 @@ def main() -> None:
             f"refusing to ship: expected 2 script blocks, found {built.count('</script>')}"
         )
 
-    # The whole point of this pipeline: exactly one daily answer in the artifact.
-    answers = built.count('"score"')
+    # The whole point of this pipeline: exactly one daily answer in the
+    # artifact. Count score fields inside the inlined data blocks rather than
+    # anywhere in the file - the game's own source legitimately contains the
+    # word "score", and a raw text count conflates the two.
+    blocks = re.findall(r"const (?:DAILY|PRACTICE) = (.+?);\n", built, re.S)
+    if len(blocks) != 2:
+        sys.exit(f"refusing to ship: expected 2 data blocks, found {len(blocks)}")
+    answers = sum(b.count('"score":') for b in blocks)
     expected = len(practice) + 1
     if answers != expected:
         sys.exit(f"refusing to ship: expected {expected} scores, found {answers}")

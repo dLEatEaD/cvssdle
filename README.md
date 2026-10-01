@@ -27,9 +27,22 @@ quietly drills CVSS fluency.
 - Feedback per guess: higher/lower plus a proximity band (exact / hot ≤0.5 /
   warm ≤1.5 / cold).
 - Streaks, win rate, and guess distribution are kept in `localStorage`.
+- Streaks are measured in missed **weekdays**, not calendar days, because
+  this is played at work: Friday to Monday is a three-day gap but zero
+  missed weekdays, so it continues the streak. Weekend play counts and
+  never hurts, it just isn't required.
 - Shareable emoji result grid, Wordle-style.
-- 210 end-of-game quips: only a first-guess win earns "Nailed it", and each
-  of the other outcomes has 30 of its own.
+- **Partial credit**: running out of guesses while within half a point is
+  reported as a near miss rather than a flat loss. It is deliberately *not* a
+  win — win rate and streaks keep meaning exactly what they say — but landing
+  that close is real CVSS skill and is worth telling apart from a wild miss.
+- **Challenge links**: your result is encoded in the URL hash, so sending it to
+  a colleague shows them how you did and invites them to try the same puzzle.
+  No backend, nothing stored, and the answer is never in the link.
+- 390 end-of-game quips: only a first-guess win earns "Nailed it", and each
+  of the other outcomes has 30 of its own. Vector mode gets its own 150, since
+  a line like "six attempts" is simply wrong in a four-try game and
+  "you brute-forced it" is the one thing vector mode makes impossible.
 - Practice mode for unlimited extra puzzles.
 
 - Dark SOC-console theme by default (near-black navy `#030711`, sky-blue
@@ -37,6 +50,109 @@ quietly drills CVSS fluency.
 
 No backend, no accounts, no tracking. `index.html` is a single self-contained
 file — no external requests at runtime.
+
+## Two modes
+
+**Guess the score** (default) — six tries at the base score, one vector metric
+revealed per miss.
+
+**Build the vector** — pick all eight metrics in four tries; the game derives
+the score from your selection and tells you **how many** metrics are right —
+never which ones.
+
+That distinction is the whole mode. The first cut marked each metric right or
+wrong, which sounds helpful and is fatal: you lock the greens, cycle the greys,
+and the vector falls out. Measured against the pool, that solves **100% of 751
+puzzles in at most three attempts with no CVSS knowledge at all** — the same
+failure as score mode's binary search, in a mode built specifically to avoid it.
+It also meant skill stopped mattering: a player getting half the metrics right
+from the advisory won exactly as often as one getting 95% right. Both 100%.
+
+With a bare count, the numbers separate again:
+
+| | by hand, zero CVSS knowledge | 50%-skill player | 95%-skill player |
+| --- | --- | --- | --- |
+| per-metric feedback | 100% | 100% | 100% |
+| count only | 37.5% | 31.6% | 100% |
+
+The residual 37.5% is not the feedback, it is the catalogue: `AV:N/AC:L/PR:N/
+UI:N/S:U/C:H/I:H/A:H` is 36.5% of the pool, so "always submit 9.8" wins a third
+of the time in *either* mode. That is a property of what gets exploited in the
+real world, not a flaw to engineer away.
+
+**The option order in each row is shuffled per puzzle.** CVSS lists every
+metric's values worst-first, so the leftmost option in all eight rows spelled
+`AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H` — the 9.8 vector again. Clicking straight
+down the left edge of the picker won 36.5% of the pool outright, with no
+reading and no CVSS. Removing the pre-filled default had only turned that from
+zero clicks into eight. The order is seeded from the puzzle id, never from the
+answer, so the left column now spells a uniformly random vector: right about 1
+time in 2,592 instead of 1 in 3. It is stable across re-renders and reloads,
+because the picker re-renders on every click and options must not move under
+the cursor.
+
+**Marking appears once the game is over, never during it.** Withholding
+per-metric feedback is what makes the mode hard, but once the answer is on
+screen that information is already the player's — so the finished board marks
+every attempt green/red, and calls out any metric that was wrong in *all* of
+them. That last line is usually the whole lesson: a board reading 3 → 4 → 6 → 7
+looks like bad luck until you see Privileges Required was `H` in every attempt
+when an unauthenticated RCE is `N`. `check_vector.py` asserts the marking is
+absent while the game is live and present once it is decided.
+
+**The live readout shows a severity band, not a number.** Of the 84 distinct
+scores a CVSS v3.1 vector can take, exactly one — 9.8 — is
+produced by a *single* vector out of all 2,592. That vector is also the 36.5%
+one above. So a live exact-score readout was a perfect oracle: fiddle the
+picker until it reads 9.8 and you have uniquely located the most likely answer
+in the catalogue, knowing nothing about CVSS at all. A band narrows to 61
+candidates rather than 1, which keeps the "your picks have consequences"
+feedback without handing the answer over. The exact score still appears on
+every submitted attempt, where it costs a try, and on the final reveal.
+
+Vector mode exists because score mode is solvable without knowing any CVSS. The
+answer carries only ~3.4 bits of entropy: 9.8 alone wins 36% of the time, and a
+plain binary search over the observed scores wins **100%** of the time in about
+five guesses. Someone who memorises six numbers beats someone who understands
+the rubric.
+
+Building the vector has 2,592 combinations, and the only practical route is
+reading the advisory. The in-game calculator implements CVSS v3.1 §7.1 directly
+and is held to NVD's published score for every puzzle in the pool by
+`check_cvss.py`.
+
+To be precise about the limit: a *scripted* constraint solver that eliminates
+every vector inconsistent with the counts so far still wins about 89% in four
+tries. 2,592 combinations is not a large space. The bar this mode defends is
+"cannot be beaten by hand without reading", not "cannot be beaten by code" —
+and the earlier per-metric feedback failed even that bar, by hand, on the first
+try somebody poked it.
+
+**Nothing is pre-selected.** The first cut of vector mode defaulted every metric
+to its worst value, which spells `AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H` — CVSS
+9.8, and the single most common vector in the KEV catalog. Opening vector mode
+and pressing Submit without touching anything therefore won outright on **274 of
+751 puzzles, 36.5%**. That is the exact failure vector mode exists to remove, so
+there is no default: all eight metrics must be chosen before Submit is enabled,
+and a partial vector shows no score. `check_vector.py` gates it.
+
+Mode is opt-in and remembered per browser. The two modes keep separate saved
+boards, so switching does not destroy a game in progress.
+
+**One mode per puzzle.** Your first move of the day commits the mode, and the
+other one unlocks with tomorrow's puzzle. This is not arbitrary: finishing
+either mode puts the *whole* answer on screen — score mode reveals a metric per
+miss and prints the full vector at the end, vector mode prints the derived
+score. Without the lock, switching mode is not a mode switch, it is a lookup:
+play score mode, read the vector off the result card, switch, and solve vector
+in one try. Worse, abandoning the first mode before it finished dodged the
+`recordStats` day guard, so the laundered win recorded as genuine. The leak
+lives in the player's memory rather than in storage, so hiding the reveal would
+not have fixed it. Practice puzzles are exempt — they draw a different CVE each
+time and record nothing, so there is nothing to launder.
+
+Each mode also keeps its own win distribution, since four tries and six tries
+do not share a histogram.
 
 ## How the answers stay hidden
 
@@ -73,8 +189,14 @@ did by shipping all 400 puzzles and selecting one client-side. Instead:
 | `verify_build.py` | CI gate: proves no future answers reached the build. |
 | `check_compat.py` | CI gate: saved games from the live site must still load. |
 | `check_playable.py` | CI gate: plays a round and asserts the core loop works. |
+| `check_streaks.py` | CI gate: streaks must survive weekends. |
+| `check_social.py` | CI gate: partial credit and challenge links. |
+| `check_cvss.py` | CI gate: the in-game CVSS calculator must match NVD. |
+| `check_vector.py` | CI gate: vector mode stays opt-in and never leaks the answer. |
+| `check_modes.py` | CI gate: one mode per puzzle, and honest per-mode stats. |
+| `check_workflows.py` | CI gate: workflow steps must pass the secrets their scripts need. |
 | `check_schedule.py` | CI gate: cron, countdown and EPOCH must agree. |
-| `build_quips.py` | Source of the 210 end-of-game quips. |
+| `build_quips.py` | Source of the 390 end-of-game quips. |
 | `play.sh` | Serve locally and open a browser. |
 
 `index.html`, `puzzles.json` and `today.json` are generated and gitignored.

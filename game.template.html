@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>CVSSdle — the daily vulnerability scoring game</title>
-<meta name="description" content="A daily guessing game for security teams. Read a real CVE, guess its CVSS base score in 6 tries.">
+<meta name="description" content="A daily guessing game for security teams. Read a real CVE, then either guess its CVSS base score or build its full vector.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230da2e7'/%3E%3Ctext x='50' y='72' font-size='58' font-family='Consolas,monospace' font-weight='bold' text-anchor='middle' fill='white'%3E9%3C/text%3E%3C/svg%3E">
 <script>
   (() => {
@@ -385,6 +385,168 @@ dialog b { color: var(--cp-text); }
   box-shadow: 0 0 12px rgba(13, 162, 231, 0.3);
 }
 .dist-bar.dim { background: var(--cp-surface-soft); color: var(--cp-text-muted); box-shadow: none; }
+.rank-card {
+  border: 1px solid var(--cp-border); border-radius: 10px;
+  background: var(--cp-accent-soft); padding: 10px 14px; margin-bottom: 12px;
+}
+.rank-name {
+  font-size: 1.05rem; font-weight: 700; color: var(--cp-accent);
+  letter-spacing: -0.01em;
+}
+.rank-next {
+  font-size: 0.7rem; color: var(--cp-text-muted); margin-top: 2px;
+  text-transform: uppercase; letter-spacing: .08em; font-weight: 600;
+}
+.trend, .freeze {
+  font-size: 0.8rem; color: var(--cp-text-muted);
+  padding: 8px 11px; border-radius: 8px; margin-bottom: 8px;
+  background: var(--cp-surface-soft); border: 1px solid var(--cp-border);
+}
+.trend b, .freeze b {
+  font-family: Consolas, "Courier New", Courier, monospace;
+  color: var(--cp-text);
+}
+.trend-improving { color: var(--cp-success); font-weight: 700; }
+.trend-slipping  { color: var(--cp-warning); font-weight: 700; }
+.trend-steady    { color: var(--cp-text-soft); font-weight: 700; }
+.weekend-note {
+  font-size: 0.7rem; color: var(--cp-text-muted); margin: -2px 0 10px;
+  padding-left: 2px;
+}
+.challenge {
+  border: 1px solid var(--cp-accent);
+  background: var(--cp-accent-soft);
+  border-radius: 10px; padding: 11px 14px; margin-bottom: 14px;
+  font-size: 0.88rem; color: var(--cp-text);
+  box-shadow: var(--cp-glow);
+}
+.challenge b { color: var(--cp-accent); }
+
+/* ---- vector mode ---- */
+.vector-card { padding: 16px 18px; }
+.metric-row {
+  display: grid; grid-template-columns: 148px 1fr; gap: 10px;
+  align-items: center; margin-bottom: 7px;
+}
+.metric-label {
+  font-size: 0.74rem; color: var(--cp-text-muted); font-weight: 600;
+  text-transform: uppercase; letter-spacing: .05em;
+}
+.metric-opts { display: flex; gap: 5px; flex-wrap: wrap; }
+.metric-opt {
+  font-size: 0.76rem; padding: 5px 11px; border-radius: 7px; cursor: pointer;
+  border: 1px solid var(--cp-border); background: var(--cp-surface-soft);
+  color: var(--cp-text-muted); font-family: inherit;
+  transition: all .12s;
+}
+.metric-opt:hover { border-color: var(--cp-border-strong); color: var(--cp-text); }
+.metric-opt[aria-pressed="true"] {
+  background: var(--cp-accent); color: var(--cp-accent-fg);
+  border-color: var(--cp-accent); font-weight: 650;
+  box-shadow: 0 0 14px rgba(13,162,231,.3);
+}
+.vector-live {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 12px 0 12px; padding: 9px 11px;
+  background: var(--cp-surface-soft); border: 1px solid var(--cp-border);
+  border-radius: 8px;
+}
+.vector-live-label {
+  font-size: 0.62rem; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--cp-text-muted); font-weight: 700;
+}
+.vector-live code {
+  font-family: Consolas, "Courier New", Courier, monospace;
+  font-size: 0.73rem; color: var(--cp-accent); word-break: break-all; flex: 1;
+}
+.vector-live-score {
+  font-family: Consolas, "Courier New", Courier, monospace;
+  font-weight: 800; font-size: 1.1rem; color: var(--cp-text);
+}
+button.wide { width: 100%; }
+.vtry {
+  display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 7px;
+  align-items: center;
+}
+.vcell {
+  font-family: Consolas, "Courier New", Courier, monospace;
+  font-size: 0.7rem; padding: 4px 8px; border-radius: 6px;
+  border: 1px solid var(--cp-border); white-space: nowrap;
+  background: var(--cp-surface-soft); color: var(--cp-text-muted);
+}
+/* Metric-level colouring appears only once the game is over. During play it is
+   the exploit: keep the greens, cycle the greys, and the vector falls out in
+   three attempts with no CVSS knowledge. After the final reveal the answer is
+   already on screen, so marking each attempt costs nothing and turns the board
+   into a post-mortem - which metric you never got right is the lesson. */
+.vcell.hit {
+  background: rgba(34,197,94,.14); border-color: rgba(34,197,94,.45);
+  color: var(--cp-success); font-weight: 700;
+}
+.vcell.miss {
+  background: rgba(239,68,68,.10); border-color: rgba(239,68,68,.32);
+  color: var(--cp-danger, #f87171);
+}
+/* The metric you never once got right, called out across every attempt. */
+.vcell.never {
+  border-color: rgba(239,68,68,.75); font-weight: 700;
+}
+.vtry-lesson {
+  font-size: 0.72rem; color: var(--cp-text-muted); margin: 2px 0 10px;
+  padding: 7px 10px; border-radius: 7px;
+  background: rgba(239,68,68,.07); border: 1px solid rgba(239,68,68,.22);
+}
+.vtry-count {
+  margin-left: auto; font-size: 0.72rem; font-weight: 700;
+  color: var(--cp-text-muted); white-space: nowrap;
+}
+.vtry-count b { color: var(--cp-accent); }
+.vtry-score {
+  font-family: Consolas, "Courier New", Courier, monospace;
+  font-weight: 700; font-size: 0.82rem; color: var(--cp-text-muted);
+  margin-left: 10px;
+}
+.mode-toggle {
+  display: flex; gap: 0; border: 1px solid var(--cp-border);
+  border-radius: 9px; overflow: hidden; margin-bottom: 14px;
+}
+.mode-toggle button {
+  flex: 1; border: none; cursor: pointer; font-family: inherit;
+  font-size: 0.78rem; font-weight: 650; padding: 9px 10px;
+  background: var(--cp-surface); color: var(--cp-text-muted);
+  transition: all .12s;
+}
+.mode-toggle button[aria-pressed="true"] {
+  background: var(--cp-accent); color: var(--cp-accent-fg);
+}
+/* Locked for the day: still readable, clearly not clickable. */
+.mode-toggle button:disabled {
+  cursor: not-allowed; opacity: 0.4;
+}
+.mode-toggle button:disabled[aria-pressed="true"] { opacity: 1; }
+.mode-note {
+  font-size: 0.68rem; color: var(--cp-text-muted); text-align: center;
+  margin: -8px 0 14px;
+}
+.help-mode {
+  font-size: 0.82rem; margin: 16px 0 2px; color: var(--cp-accent);
+}
+.help-sub {
+  font-size: 0.72rem; color: var(--cp-text-muted); margin: 0 0 6px;
+}
+.help-lock {
+  font-size: 0.74rem; margin-top: 16px; padding: 10px 12px;
+  background: var(--cp-surface-soft); border: 1px solid var(--cp-border);
+  border-radius: 8px;
+}
+@media (max-width: 480px) {
+  .metric-row { grid-template-columns: 1fr; gap: 4px; }
+}
+.teaser {
+  font-size: 0.68rem; color: var(--cp-text-muted); margin-top: 8px;
+  text-transform: uppercase; letter-spacing: .09em; font-weight: 600;
+}
+.teaser b { color: var(--cp-accent); letter-spacing: .02em; }
 footer {
   max-width: 620px; width: 100%; margin-top: 8px;
   font-size: 0.72rem; color: var(--cp-text-muted); text-align: center;
@@ -433,6 +595,12 @@ footer a:hover { text-decoration: underline; }
 </header>
 
 <main>
+  <div class="challenge" id="challenge" hidden></div>
+  <div class="mode-toggle">
+    <button type="button" id="mode-score" aria-pressed="true">Guess the score</button>
+    <button type="button" id="mode-vector" aria-pressed="false">Build the vector</button>
+  </div>
+  <div class="mode-note" id="mode-note"></div>
   <div class="card" id="puzzle-card">
     <div class="puzzle-meta" id="puzzle-meta"></div>
     <p class="vuln-title" id="vuln-title"></p>
@@ -453,6 +621,20 @@ footer a:hover { text-decoration: underline; }
     <div class="scale-hint">CVSS v3.1 base score &middot; 0.1 increments &middot; 6 tries</div>
   </div>
 
+  <div id="vector-area" hidden>
+    <div class="card vector-card">
+      <div class="hints-label">Build the vector</div>
+      <div id="metric-picker"></div>
+      <div class="vector-live">
+        <span class="vector-live-label">Your vector</span>
+        <code id="vector-preview"></code>
+        <span class="vector-live-score" id="vector-score" title="Severity band only - the exact score would give the answer away"></span>
+      </div>
+      <button class="primary wide" id="btn-submit-vector">Submit vector</button>
+      <div class="scale-hint" id="vector-tries"></div>
+    </div>
+  </div>
+
   <div class="card result" id="result" hidden></div>
 </main>
 
@@ -466,27 +648,50 @@ footer a:hover { text-decoration: underline; }
 
 <dialog id="dlg-help">
   <h2>How to play</h2>
-  <p>Each day you get one real, actively-exploited vulnerability from the CISA KEV catalog. Guess its <b>CVSS v3.1 base score</b> in 6 tries.</p>
+  <p>Each day you get one real, actively-exploited vulnerability from the CISA KEV catalog. Everyone gets the same one, and a new one unlocks at local midnight.</p>
+  <p>There are <b>two ways to play it</b>. Pick one with the toggle at the top.</p>
+
+  <h3 class="help-mode">Guess the score</h3>
+  <p class="help-sub">Six tries at the CVSS v3.1 base score.</p>
   <ul>
     <li>After each guess you're told whether the real score is <b>higher</b> or <b>lower</b>.</li>
     <li>Colour shows how close you are: <span class="right">exact</span>, <span class="hot">hot (&le;0.5)</span>, <span class="warm">warm (&le;1.5)</span>, <span class="cold">cold</span>.</li>
     <li>Every wrong guess reveals one metric from the real CVSS vector &mdash; attack vector, complexity, privileges required, and so on.</li>
-    <li>Use the revealed metrics to actually <i>calculate</i> the score. That's the skill.</li>
+    <li>Run out of guesses within half a point and it's recorded as a <b>near miss</b> rather than a flat loss. It isn't a win, but it isn't nothing either.</li>
   </ul>
-  <p>A new vulnerability unlocks at local midnight. Everyone gets the same one.</p>
+
+  <h3 class="help-mode">Build the vector</h3>
+  <p class="help-sub">Four tries to pick all eight metrics. The score is derived from your choice.</p>
+  <ul>
+    <li>No metrics are revealed &mdash; they're the answer.</li>
+    <li>Each attempt tells you <b>how many</b> of the eight you got right &mdash; not which ones. Being told which would let you lock the greens and cycle the rest, and the mode would be solvable without reading anything.</li>
+    <li>This is the harder mode, and the honest one: the base score has few enough possible values that you can binary-search it without knowing any CVSS at all. Eight metrics have 2,592 combinations, and with only a count to go on there is no way through by hand except reading the advisory.</li>
+  </ul>
+
+  <p class="help-lock"><b>One mode per puzzle.</b> Your first guess of the day locks the mode in, because finishing either mode shows you the full answer &mdash; the score <i>and</i> the vector. The other mode unlocks with tomorrow's puzzle. Practice puzzles are exempt: switch freely there, nothing is recorded.</p>
+
   <div class="btn-row"><button class="primary" data-close>Got it</button></div>
 </dialog>
 
 <dialog id="dlg-stats">
   <h2>Statistics</h2>
+  <div class="rank-card">
+    <div class="rank-name" id="rank-name">Triage Trainee</div>
+    <div class="rank-next" id="rank-next"></div>
+  </div>
   <div class="stats-grid">
     <div class="stat"><b id="s-played">0</b><span>Played</span></div>
     <div class="stat"><b id="s-win">0</b><span>Win %</span></div>
     <div class="stat"><b id="s-streak">0</b><span>Streak</span></div>
     <div class="stat"><b id="s-max">0</b><span>Max</span></div>
   </div>
-  <h2 style="font-size:.95rem">Guess distribution</h2>
+  <div class="trend" id="trend"></div>
+  <div class="freeze" id="freeze"></div>
+  <div class="weekend-note" id="weekend-note"></div>
+  <div class="freeze" id="near-count" hidden></div>
+  <h2 style="font-size:.95rem" id="dist-title">Guess distribution</h2>
   <div id="dist"></div>
+  <div class="weekend-note" id="dist-other" hidden></div>
   <div class="btn-row">
     <button class="ghost" id="btn-practice">Practice puzzle</button>
     <button class="primary" data-close>Close</button>
@@ -616,11 +821,45 @@ let puzzle, guesses = [], finished = false, won = false;
 /* ---------- rendering ---------- */
 const $ = (id) => document.getElementById(id);
 
+/* Proximity bands. In real CVSS work, landing within half a point is the
+   skill; a wild miss is not the same thing as a near miss, and scoring them
+   identically throws away the most interesting signal in the game. */
 function proximity(diff) {
   if (diff === 0) return { cls: "right", label: "Exact" };
   if (diff <= 0.5) return { cls: "hot", label: "Hot" };
   if (diff <= 1.5) return { cls: "warm", label: "Warm" };
   return { cls: "cold", label: "Cold" };
+}
+
+/* Partial credit for running out of guesses while close.
+   Deliberately NOT a win: win rate and streaks keep meaning exactly what they
+   say, and a near miss is reported as its own outcome rather than quietly
+   inflating the record. */
+const NEAR_MISS = 0.5;
+
+/* Distance from the answer, in score points, for whichever mode was played.
+   Vector attempts derive a score from the metrics picked, so both modes report
+   the same unit and the accuracy trend stays comparable across them. */
+function closestMiss() {
+  if (vectorMode()) {
+    if (!vectorTries.length) return null;
+    return Math.round(
+      Math.min(...vectorTries.map((t) => Math.abs(t.score - puzzle.score))) * 10
+    ) / 10;
+  }
+  if (!guesses.length) return null;
+  return Math.round(
+    Math.min(...guesses.map((g) => Math.abs(g - puzzle.score))) * 10
+  ) / 10;
+}
+
+function isNearMiss() {
+  // A score-mode outcome only. Vector mode is scored on metrics, so landing
+  // near the number while getting the vector wrong is not a near miss - it is
+  // just a wrong vector that happened to total up close.
+  if (vectorMode()) return false;
+  const m = closestMiss();
+  return !won && m !== null && m <= NEAR_MISS;
 }
 
 function renderPuzzle() {
@@ -645,18 +884,70 @@ function renderPuzzle() {
     : "Daily vulnerability scoring \u00b7 #" + puzzleNumber();
 }
 
-function parseVector() {
+function parseVectorString(s) {
   const out = {};
-  for (const part of puzzle.vector.split("/")) {
+  for (const part of String(s).split("/")) {
     const [k, v] = part.split(":");
     if (METRIC_NAMES[k]) out[k] = v;
   }
   return out;
 }
 
+function parseVector() {
+  return parseVectorString(puzzle.vector);
+}
+
+/* ---------- CVSS v3.1 base score ----------
+   Implements the specification directly (FIRST CVSS v3.1, section 7.1) rather
+   than approximating it: the game derives the score from the metrics a player
+   picks, so any drift here would teach the wrong rubric. check_cvss.py holds
+   this to NVD's published score for every puzzle in the pool. */
+const CVSS_W = {
+  AV: { N: 0.85, A: 0.62, L: 0.55, P: 0.2 },
+  AC: { L: 0.77, H: 0.44 },
+  // Privileges Required is worth more when Scope is Changed.
+  PR: { U: { N: 0.85, L: 0.62, H: 0.27 }, C: { N: 0.85, L: 0.68, H: 0.5 } },
+  UI: { N: 0.85, R: 0.62 },
+  CIA: { H: 0.56, L: 0.22, N: 0 },
+};
+
+/* The spec's Roundup: round to one decimal, always upward, with a guard
+   against binary floating point nudging an exact value over the line. */
+function cvssRoundUp(x) {
+  const i = Math.round(x * 100000);
+  if (i % 10000 === 0) return i / 100000;
+  return (Math.floor(i / 10000) + 1) / 10;
+}
+
+function scoreVector(v) {
+  const scope = v.S === "C" ? "C" : "U";
+  const iss = 1 - (1 - CVSS_W.CIA[v.C]) * (1 - CVSS_W.CIA[v.I]) * (1 - CVSS_W.CIA[v.A]);
+  const impact = scope === "U"
+    ? 6.42 * iss
+    : 7.52 * (iss - 0.029) - 3.25 * Math.pow(iss - 0.02, 15);
+  if (impact <= 0) return 0;
+  const exploitability =
+    8.22 * CVSS_W.AV[v.AV] * CVSS_W.AC[v.AC] * CVSS_W.PR[scope][v.PR] * CVSS_W.UI[v.UI];
+  const raw = scope === "U"
+    ? Math.min(impact + exploitability, 10)
+    : Math.min(1.08 * (impact + exploitability), 10);
+  return cvssRoundUp(raw);
+}
+
+function severityFor(score) {
+  if (score === 0) return "None";
+  if (score < 4) return "Low";
+  if (score < 7) return "Medium";
+  if (score < 9) return "High";
+  return "Critical";
+}
+
 function renderHints() {
   const vec = parseVector();
-  const reveal = finished ? HINT_ORDER.length : guesses.length;
+  // Vector mode must never reveal metrics - they are the answer.
+  const reveal = vectorMode()
+    ? (finished ? HINT_ORDER.length : 0)
+    : (finished ? HINT_ORDER.length : guesses.length);
   const grid = $("hint-grid");
   grid.innerHTML = "";
   HINT_ORDER.forEach((key, i) => {
@@ -680,6 +971,8 @@ function renderHints() {
   const lbl = $("hints-label");
   if (finished) {
     lbl.textContent = "CVSS vector \u00b7 full answer";
+  } else if (vectorMode()) {
+    lbl.innerHTML = "CVSS vector \u00b7 <em>this is what you're building</em>";
   } else if (shown === 0) {
     lbl.innerHTML = "CVSS vector \u00b7 <em>locked</em> \u2014 each wrong guess reveals one";
   } else {
@@ -715,6 +1008,19 @@ function renderGuesses() {
 }
 
 function shareGrid() {
+  if (vectorMode()) {
+    // One row per attempt, greens equal to the number of correct metrics.
+    // Sorted, so the grid conveys the count and not which metrics they were -
+    // a positional grid would hand a recipient the same per-metric feedback
+    // the game itself deliberately withholds.
+    return vectorTries
+      .map((t) => {
+        const hits = HINT_ORDER.filter((k) => t.correct[k]).length;
+        return "\uD83D\uDFE9".repeat(hits) +
+               "\u2B1C".repeat(HINT_ORDER.length - hits);
+      })
+      .join("\n");
+  }
   return guesses.map((g) => {
     const diff = Math.round(Math.abs(puzzle.score - g) * 10) / 10;
     if (diff === 0) return "\uD83D\uDFE9";
@@ -736,11 +1042,83 @@ function shareUrl() {
 }
 
 function shareText() {
+  if (vectorMode()) {
+    const head = practiceMode
+      ? "CVSSdle vector practice"
+      : "CVSSdle vector #" + puzzleNumber() + " " +
+        (won ? vectorTries.length : "X") + "/" + VECTOR_TRIES;
+    const url = challengeUrl();
+    return head + "\n" + shareGrid() + (url ? "\n" + url : "");
+  }
   const head = practiceMode
     ? "CVSSdle practice"
-    : "CVSSdle #" + puzzleNumber() + " " + (won ? guesses.length : "X") + "/" + MAX_GUESSES;
-  const url = shareUrl();
+    : "CVSSdle #" + puzzleNumber() + " " +
+      (won ? guesses.length : (isNearMiss() ? "\u00bd" : "X")) + "/" + MAX_GUESSES;
+  const url = challengeUrl();
   return head + "\n" + shareGrid() + (url ? "\n" + url : "");
+}
+
+/* ---------- challenge links ---------- */
+
+/* A result encoded in the URL hash. No backend, nothing stored anywhere, and
+   the hash is never sent to the server - so a colleague can open your result,
+   see how you did, and play the same puzzle themselves.
+
+   Encodes only what is needed to render a scoreboard: puzzle number, the
+   sender's guess count, and whether they won. Never the answer: the recipient
+   has to actually play it. */
+function encodeChallenge() {
+  if (practiceMode) return "";
+  if (vectorMode()) {
+    // Vector results carry a v prefix so the two modes stay distinguishable,
+    // and so a score-mode reader does not misreport a vector attempt.
+    return "c" + puzzleNumber() + ".v" + (won ? vectorTries.length : "x");
+  }
+  const outcome = won ? guesses.length : (isNearMiss() ? "n" : "x");
+  return "c" + puzzleNumber() + "." + outcome;
+}
+
+function parseChallenge(hash) {
+  const m = /^#c(\d+)\.(v?)([1-6]|n|x)$/.exec(hash || "");
+  if (!m) return null;
+  const vector = m[2] === "v";
+  // A vector game only has four tries; reject a fragment claiming more.
+  if (vector && /^[56]$/.test(m[3])) return null;
+  // Near miss is a score-mode outcome only.
+  if (vector && m[3] === "n") return null;
+  return { number: Number(m[1]), outcome: m[3], vector };
+}
+
+function challengeUrl() {
+  const base = shareUrl();
+  if (!base) return "";
+  const frag = encodeChallenge();
+  return frag ? base + "#" + frag : base;
+}
+
+/* Show an incoming challenge, if the puzzle matches today's. An old link is
+   ignored rather than shown misleadingly - the recipient would otherwise see a
+   score for a puzzle they cannot play. */
+function renderChallenge() {
+  const c = parseChallenge(location.hash);
+  const el = $("challenge");
+  if (!el) return;
+  if (!c || c.number !== puzzleNumber()) {
+    el.hidden = true;
+    return;
+  }
+  const how = c.outcome === "x"
+    ? "did not get it"
+    : c.outcome === "n"
+      ? "came within half a point"
+      : c.vector
+        ? "built the vector in " + c.outcome + "/" + VECTOR_TRIES
+        : "got it in " + c.outcome + "/" + MAX_GUESSES;
+  el.hidden = false;
+  el.innerHTML = "\uD83C\uDFAF <b>You've been challenged.</b> They " + how +
+    " on today's puzzle. Your turn.";
+  // Clear the fragment so a refresh doesn't keep re-challenging.
+  history.replaceState(null, "", location.pathname + location.search);
 }
 
 /* Clipboard write with a legacy fallback, since the async Clipboard API is
@@ -1015,6 +1393,217 @@ const LOSS_QUIPS = [
   "Tomorrow is another CVE. This one belongs to the void.",
 ];
 
+const NEAR_QUIPS = [
+  "Within half a point. That is a correct severity call by any practical measure.",
+  "Close enough that a real triage would have reached the same decision.",
+  "Half a point out. The rubric split hairs with you.",
+  "You had the shape of it exactly right.",
+  "That is the right answer with a rounding dispute attached.",
+  "Near miss. Your instincts were sound, the arithmetic was unlucky.",
+  "So close the difference would not change a single remediation priority.",
+  "A fraction out. Nobody would argue with your triage.",
+  "You read the vector correctly and landed a whisker away.",
+  "That margin is smaller than most vendors' own disagreements.",
+  "Close enough to be right in every way that matters operationally.",
+  "Half a point. Somewhere a CVSS calculator is being smug.",
+  "You were in the right neighbourhood and knocked on the wrong door.",
+  "Correct severity band, wrong decimal. Take the moral victory.",
+  "That is a miss on paper and a hit in practice.",
+  "Painfully close. The kind of miss that stings more than a bad guess.",
+  "You bracketed it perfectly and still could not land it.",
+  "A near miss at this range is skill, not luck.",
+  "So close the scoring guide would call it a judgement call.",
+  "That is within the margin most analysts argue over anyway.",
+  "Nearly. The vector was telling you the truth and you nearly heard it.",
+  "Half a point adrift, and a perfectly defensible answer.",
+  "You would pass peer review with that, just not this game.",
+  "Close. Genuinely, respectably close.",
+  "That one was decided by a single metric value.",
+  "A hair out. Your reasoning was right.",
+  "So near. The base score was being needlessly precise.",
+  "Within half a point and out of guesses. Brutal combination.",
+  "You found the right answer and then walked past it.",
+  "That is the best kind of loss. Still a loss, mind.",
+];
+
+const VECTOR_VERDICTS = {
+  1: {
+    title: "Vector nailed 🧩",
+    quips: [
+      "Eight metrics, first attempt, no reveals. That is the whole rubric from memory.",
+      "One submission. You did not guess that, you derived it.",
+      "First try on 2,592 combinations. There is no lucky version of that.",
+      "Straight to the vector. The advisory never stood a chance.",
+      "You read it once and scored it exactly. That is the job, done properly.",
+      "No feedback, no hints, eight for eight. Genuinely elite.",
+      "Perfect vector, first pass. Somewhere a CVSS working group member nods.",
+      "That is not scoring, that is fluency.",
+      "You built the answer before the game could tell you anything.",
+      "One attempt. Every metric. Nothing to correct.",
+      "Clean sheet on the first submission. No notes.",
+      "You skipped the iteration entirely and just knew it.",
+      "Eight correct metrics with zero information. Show-off.",
+      "First-pass exact vector. This is the hardest thing the game asks for.",
+      "You did not need the feedback loop. You are the feedback loop.",
+      "Flawless. The kind of result that makes people check the code for bugs.",
+      "Called every metric blind. The advisory was an open book.",
+      "That is a vector built from understanding, not elimination.",
+      "One shot, eight metrics, full marks. Absurd.",
+      "You scored it the way NVD scored it, on the first go.",
+      "No trial, no error, just the answer.",
+      "Perfect first vector. Your triage queue must be a peaceful place.",
+      "Eight out of eight, cold. That is the ceiling of this game.",
+      "You read the words and produced the exact vector. Remarkable.",
+      "First attempt. The search space did not get a say.",
+      "That is the rubric internalised, not memorised.",
+      "Immaculate. One submission and the whole vector fell out correct.",
+      "You have clearly done this for a living.",
+      "Eight metrics, one try, no help. Take the rest of the day.",
+      "A first-attempt vector is the real high score. You just set it.",
+    ],
+  },
+  2: {
+    title: "Vector solved 🧩",
+    quips: [
+      "Two attempts. One probe, one correction, done.",
+      "You found the shape immediately and fixed the rest.",
+      "Second try. That is efficient reading, not luck.",
+      "One miss to calibrate, then the full vector. Textbook.",
+      "Quick convergence. You knew which metric was wrong before the game said so.",
+      "Two submissions for eight metrics. Comfortable.",
+      "You corrected the right thing first time. That is the skill.",
+      "A single adjustment and the whole vector locked in.",
+      "Two tries, no flailing. You were reasoning, not sampling.",
+      "That is how someone who actually reads advisories plays it.",
+      "Second attempt exact. The first one was basically right anyway.",
+      "You spent one guess learning and one guess winning.",
+      "Clean. Two passes and the vector was yours.",
+      "Minimal correction, maximum result.",
+      "You identified your own error faster than the feedback did.",
+      "Two attempts on 2,592 combinations is genuinely strong.",
+      "Nearly first-try. The near-first-try is underrated.",
+      "One nudge was all it needed. Confident work.",
+      "Second submission, perfect vector. No wasted motion.",
+      "You read the description properly. It shows.",
+      "That is a tight loop. One hypothesis, one fix.",
+      "Two tries. The rubric put up almost no resistance.",
+      "Solid. You were never actually lost.",
+      "A single wrong metric, then a flawless vector.",
+      "Fast and deliberate. The good combination.",
+      "You did not brute-force anything. There is nothing to brute-force.",
+      "Two attempts and done. Quietly impressive.",
+      "Efficient. You treated the first attempt as information, not a gamble.",
+      "Second-try vector. Comfortably above the curve.",
+      "You narrowed eight unknowns in one move. That is real CVSS work.",
+    ],
+  },
+  3: {
+    title: "Vector solved 🧩",
+    quips: [
+      "Three attempts. You worked it out, metric by metric.",
+      "Methodical. Every pass got you closer and you finished it.",
+      "That is proper iterative scoring. Nothing wrong with earning it.",
+      "Three tries, full vector. The process worked.",
+      "You kept the metrics that landed and fixed the ones that did not.",
+      "Patient work. The vector came apart under pressure.",
+      "Three passes to eight correct metrics. Respectable.",
+      "You used the feedback exactly the way it is meant to be used.",
+      "Not flashy, but completely correct. That counts.",
+      "Steady convergence. No panic, no scattergun.",
+      "Three attempts and a perfect vector. Earned.",
+      "You narrowed it properly instead of guessing wildly.",
+      "That is what reading the advisory twice gets you.",
+      "Solved with one try to spare. Comfortable enough.",
+      "Three rounds of honest reasoning. Good result.",
+      "You held your nerve on the metrics you had right.",
+      "The long way round, but the vector is exact.",
+      "Three tries. The rubric made you work and you did.",
+      "Incremental and correct. Nothing to apologise for.",
+      "You debugged your own vector. That is the exercise.",
+      "Three attempts, eight metrics, zero errors at the end.",
+      "A real solve. You reasoned your way there.",
+      "Took some doing. You did it.",
+      "Three passes and the advisory gave it up.",
+      "You converged. That is all the game asks.",
+      "Good discipline. You changed one thing at a time.",
+      "Three tries on 2,592 combinations is still a strong result.",
+      "The vector resisted, briefly.",
+      "Worked for it, got it. The best kind of win.",
+      "Three attempts. Solid, unglamorous, correct.",
+    ],
+  },
+  4: {
+    title: "Vector solved 🧩",
+    quips: [
+      "Last attempt. That was uncomfortably close to a loss.",
+      "Four tries, final submission, exact vector. Clutch.",
+      "You got there on the last possible move. Take it.",
+      "Right at the buzzer. The vector nearly got away.",
+      "Final attempt, full marks. Nerve held.",
+      "That is the narrowest possible win and it counts the same.",
+      "Four tries. You spent every one of them and earned it.",
+      "Down to the last submission and you landed it.",
+      "Hard-fought. Eight metrics do not always come quietly.",
+      "You were one wrong metric from nothing. You found it.",
+      "Final-try vector. Genuinely tense.",
+      "That advisory did not want to be scored. You scored it anyway.",
+      "No tries left and no errors left. Perfect timing.",
+      "You used the whole budget. That is what it is for.",
+      "Four attempts, exact vector, zero margin.",
+      "Scraped it. A win is a win and this one was work.",
+      "The last submission was the right one. Barely.",
+      "You fixed the final metric with nothing in reserve.",
+      "Four tries. The rubric made you suffer for that.",
+      "Clutch solve. Those stay with you longer than the easy ones.",
+      "Right on the edge. Exactly where the good ones happen.",
+      "You held it together when it mattered.",
+      "Final attempt exact. That is a real comeback.",
+      "Four passes to prise eight metrics loose. Well done.",
+      "No room left at all. Still correct.",
+      "You earned that one the hard way.",
+      "Last try, full vector. The best kind of relief.",
+      "That was going badly right up until it was not.",
+      "Four attempts and a perfect finish. Hard-won.",
+      "The vector held out as long as it could.",
+    ],
+  },
+};
+
+const VECTOR_LOSS_QUIPS = [
+  "Four attempts and the vector kept at least one secret.",
+  "Eight metrics is a lot to be right about all at once.",
+  "Close on most of them is still wrong on the whole.",
+  "The vector wins this round. It usually does.",
+  "You had most of it. The rubric only accepts all of it.",
+  "One stubborn metric, and that is the whole game.",
+  "This is the hard mode, and it just demonstrated why.",
+  "No shortcuts here. That is the point, and it bit.",
+  "The advisory was vaguer than the vector it produced.",
+  "Scope and impact are where these usually come apart.",
+  "You were reasoning correctly about the wrong metric.",
+  "Four tries, 2,592 combinations. The odds were always rude.",
+  "The answer was in the description. It just was not obvious.",
+  "Some vectors only make sense after you see them.",
+  "Even NVD analysts argue about a few of these.",
+  "Not today. The metrics held the line.",
+  "You will recognise this pattern next time.",
+  "That one rewarded a reading nobody would call natural.",
+  "Out of attempts, not out of understanding.",
+  "The vector was more pedantic than the vulnerability deserved.",
+  "Partial credit is not a thing here. Harsh, but honest.",
+  "Eight simultaneous judgement calls. One of them went.",
+  "The exploit was clear. Its scoring was not.",
+  "You lost to a single metric value. Infuriating.",
+  "Tomorrow's vector will be more reasonable. Probably not.",
+  "This is why vector mode exists. It is genuinely hard.",
+  "The rubric is unmoved by how close you were.",
+  "Four passes and it still would not resolve.",
+  "Some advisories are written to defeat exactly this.",
+  "Beaten by the vector. There is no shame in that one.",
+];
+
+const VECTOR_LOSS_HEADING = "Vector unsolved";
+
 /* Deterministic pick so the quip doesn't change on re-render or reload. */
 function quipFor(list, seed) {
   return list[Math.abs(seed) % list.length];
@@ -1025,11 +1614,32 @@ function renderResult() {
   $("play-area").hidden = true;
   const sevColor = puzzle.score >= 9 ? "hot" : puzzle.score >= 7 ? "warm" : "cold";
 
-  // Seed on the puzzle + guess count so the quip is stable across re-renders.
-  const seed = puzzle.score * 10 + guesses.length + puzzle.id.length;
-  const verdict = won ? VERDICTS[guesses.length] : null;
-  const heading = won ? verdict.title : "Out of guesses";
-  const quip = won ? quipFor(verdict.quips, seed) : quipFor(LOSS_QUIPS, seed);
+  // Seed on the puzzle + attempt count so the quip is stable across re-renders.
+  const vm = vectorMode();
+  const seed = puzzle.score * 10 + puzzle.id.length +
+    (vm ? vectorTries.length : guesses.length);
+  const verdict = won && !vm ? VERDICTS[guesses.length] : null;
+  const near = !vm && isNearMiss();
+  let heading, quip;
+  if (vm) {
+    const best = vectorBest();
+    const tier = won ? VECTOR_VERDICTS[vectorTries.length] : null;
+    heading = won ? tier.title : VECTOR_LOSS_HEADING;
+    quip = won
+      ? quipFor(tier.quips, seed)
+      : quipFor(VECTOR_LOSS_QUIPS, seed) +
+        " Best attempt had " + best + " of " + HINT_ORDER.length + " metrics right.";
+  } else {
+    heading = won
+      ? verdict.title
+      : (near ? "So close \uD83E\uDD1E" : "Out of guesses");
+    quip = null;
+  }
+  if (!vm) {
+    quip = won
+      ? quipFor(verdict.quips, seed)
+      : quipFor(near ? NEAR_QUIPS : LOSS_QUIPS, seed);
+  }
 
   el.innerHTML =
     "<h2>" + heading + "</h2>" +
@@ -1040,9 +1650,11 @@ function renderResult() {
     '<a id="answer-link" target="_blank" rel="noopener"></a>' +
     '<div class="btn-row">' +
       '<button class="primary" id="btn-share">Share result</button>' +
+      '<button class="ghost" id="btn-challenge">Challenge</button>' +
       '<button class="ghost" id="btn-another">Practice again</button>' +
     "</div>" +
-    (practiceMode ? "" : '<div class="countdown" id="countdown"></div>');
+    (practiceMode ? "" : '<div class="countdown" id="countdown"></div>'
+      + (DAILY.next ? '<div class="teaser">Tomorrow: <b id="teaser-vendor"></b></div>' : ""));
 
   // Assign puzzle-derived values as text/properties rather than splicing them
   // into an HTML string, so upstream data can never introduce markup or a
@@ -1052,6 +1664,11 @@ function renderResult() {
   const link = $("answer-link");
   link.href = /^https:\/\/nvd\.nist\.gov\//.test(puzzle.url) ? puzzle.url : "#";
   link.textContent = puzzle.id + " on NVD \u2192";
+
+  // Vendor only, set as text. Never the product, score or vector - the teaser
+  // is there to create anticipation, not to leak tomorrow's answer.
+  const teaser = $("teaser-vendor");
+  if (teaser) teaser.textContent = DAILY.next;
 
   $("btn-share").onclick = async () => {
     const text = shareText();
@@ -1083,6 +1700,20 @@ function renderResult() {
     box.select();
     toast("Press \u2318C to copy");
   };
+  const chBtn = $("btn-challenge");
+  if (chBtn) {
+    chBtn.onclick = async () => {
+      const url = challengeUrl();
+      if (!url) { toast("Challenge links need the published site"); return; }
+      const msg = "I scored " +
+        (won ? guesses.length + "/" + MAX_GUESSES
+             : (isNearMiss() ? "a near miss" : "nothing")) +
+        " on CVSSdle #" + puzzleNumber() + ". Beat that:\n" + url;
+      if (await copyText(msg)) toast("Challenge link copied");
+      else toast("Copy failed \u2014 try Share result");
+    };
+  }
+
   $("btn-another").onclick = startPractice;
   if (!practiceMode) tickCountdown();
 }
@@ -1123,12 +1754,16 @@ function submitGuess() {
     return;
   }
   guesses.push(g);
+  if (!practiceMode) commitMode();
   input.value = "";
   if (g === puzzle.score) { finished = true; won = true; }
   else if (guesses.length >= MAX_GUESSES) { finished = true; won = false; }
 
   renderGuesses();
   renderHints();
+  // The first move commits the mode, so the toggle has to re-render or it
+  // keeps offering a switch that switchMode will refuse.
+  applyMode();
   if (finished) {
     if (!practiceMode) { recordStats(); persist(); }
     renderResult();
@@ -1146,7 +1781,11 @@ function persist() {
     // remaps day numbers to different CVEs, and replaying old guesses against a
     // new answer produces feedback that is confidently wrong.
     id: DAILY.puzzle.id,
+    // The two modes keep separate boards, so switching mode mid-day does not
+    // destroy a game in progress in the other one.
+    mode: vectorMode() ? "vector" : "score",
     guesses,
+    vectorTries,
     finished,
     won,
   });
@@ -1155,6 +1794,25 @@ function persist() {
 function restore() {
   const st = load(KEY_STATE, null);
   if (!st || st.day !== DAILY.number || st.id !== DAILY.puzzle.id) return false;
+  // A board saved in the other mode is not this board.
+  if ((st.mode || "score") !== (vectorMode() ? "vector" : "score")) return false;
+
+  if (vectorMode()) {
+    if (!Array.isArray(st.vectorTries) || st.vectorTries.length > VECTOR_TRIES) {
+      return false;
+    }
+    const ok = st.vectorTries.every((t) =>
+      t && t.pick && t.correct && typeof t.score === "number" &&
+      HINT_ORDER.every((k) => typeof t.pick[k] === "string"));
+    if (!ok) return false;
+    vectorTries = st.vectorTries;
+    finished = Boolean(st.finished);
+    won = Boolean(st.won);
+    const hit = vectorTries.some((t) => vectorSolved(t.correct));
+    if (won !== hit) won = hit;
+    if (!finished) finished = hit || vectorTries.length >= VECTOR_TRIES;
+    return true;
+  }
 
   // Saved state is user-writable, so validate rather than trust it.
   if (!Array.isArray(st.guesses) || st.guesses.length > MAX_GUESSES) return false;
@@ -1175,51 +1833,578 @@ function restore() {
   return true;
 }
 
+/* ---------- progression ---------- */
+
+/* Titles are earned on games played, not win rate: they should reward showing
+   up, which is what a daily habit needs, rather than punishing hard puzzles. */
+const RANKS = [
+  { at: 0,   name: "Triage Trainee" },
+  { at: 5,   name: "Analyst" },
+  { at: 15,  name: "Senior Analyst" },
+  { at: 30,  name: "Vulnerability Lead" },
+  { at: 60,  name: "Severity Architect" },
+  { at: 120, name: "CVSS Oracle" },
+];
+
+function rankFor(played) {
+  let r = RANKS[0];
+  for (const x of RANKS) if (played >= x.at) r = x;
+  return r;
+}
+
+function nextRank(played) {
+  return RANKS.find((x) => played < x.at) || null;
+}
+
 function blankStats() {
   return { played: 0, wins: 0, streak: 0, max: 0, dist: [0, 0, 0, 0, 0, 0],
-           lastDay: null, lastId: null };
+           // Vector wins land in their own distribution: the modes have
+           // different try counts (4 vs 6), so a shared histogram would both
+           // mis-bucket them and write a negative index on a vector win.
+           vdist: [0, 0, 0, 0],
+           lastDay: null, lastId: null,
+           // Rolling log of recent results, newest last. Powers the accuracy
+           // trend; capped so storage cannot grow without bound.
+           history: [],
+           // Near misses: out of guesses but within half a point. Tracked
+           // separately so win rate keeps meaning exactly what it says.
+           near: 0,
+           // One missed day a month is forgiven rather than resetting the
+           // streak. Losing a long streak to a day off is the single most
+           // common reason people abandon a daily game.
+           freezeUsedOn: null };
+}
+
+/* Older saves predate these fields. Fill them in rather than discarding, so
+   nobody loses a streak to an upgrade. */
+function normaliseStats(s) {
+  if (!Array.isArray(s.dist) || s.dist.length !== MAX_GUESSES) {
+    s.dist = [0, 0, 0, 0, 0, 0];
+  }
+  if (!Array.isArray(s.vdist) || s.vdist.length !== VECTOR_TRIES) {
+    s.vdist = [0, 0, 0, 0];
+  }
+  if (!Array.isArray(s.history)) s.history = [];
+  if (!("freezeUsedOn" in s)) s.freezeUsedOn = null;
+  if (typeof s.near !== "number") s.near = 0;
+  if (typeof s.played !== "number") s.played = 0;
+  if (typeof s.wins !== "number") s.wins = 0;
+  if (typeof s.streak !== "number") s.streak = 0;
+  if (typeof s.max !== "number") s.max = 0;
+  return s;
+}
+
+const FREEZE_COOLDOWN_DAYS = 30;
+
+/* This is a game people play at work, so a streak must survive the weekend.
+   Gaps are measured in missed *weekdays*, not calendar days: Friday to Monday
+   is a gap of three days but zero missed weekdays, so the streak continues.
+   Weekend play still counts and never hurts - it just isn't required. */
+function dateForDay(n) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(DAILY.date || "");
+  if (!m) return null;            // local preview build has no real date
+  const base = Date.UTC(+m[1], +m[2] - 1, +m[3]);
+  return new Date(base + (n - DAILY.number) * 86400000);
+}
+
+function isWeekend(d) {
+  const w = d.getUTCDay();
+  return w === 0 || w === 6;
+}
+
+/* Weekdays strictly between two day numbers - i.e. the ones that were missed. */
+function missedWeekdays(from, to) {
+  if (dateForDay(from) === null) return Math.max(0, to - from - 1);
+  let n = 0;
+  for (let d = from + 1; d < to; d++) {
+    const date = dateForDay(d);
+    if (date && !isWeekend(date)) n++;
+  }
+  return n;
+}
+
+function freezeAvailable(s, day) {
+  return s.freezeUsedOn === null || day - s.freezeUsedOn >= FREEZE_COOLDOWN_DAYS;
 }
 
 function recordStats() {
-  const s = load(KEY_STATS, blankStats());
+  const s = normaliseStats(load(KEY_STATS, blankStats()));
   const day = DAILY.number;
   // Also key on the CVE id: if a pool refresh remapped this day to a different
   // puzzle, the earlier result was recorded against a different question and
   // this genuinely is a new one.
   if (s.lastDay === day && s.lastId === DAILY.puzzle.id) return;
-  if (!Array.isArray(s.dist) || s.dist.length !== MAX_GUESSES) {
-    s.dist = [0, 0, 0, 0, 0, 0];
-  }
+
+  const missed = s.lastDay === null ? 0 : missedWeekdays(s.lastDay, day);
+  let froze = false;
+
   s.played++;
+  const vm = vectorMode();
+  // Each mode counts its own attempts. Reading guesses.length in vector mode
+  // yields 0, which indexed the distribution at -1 and silently dropped the
+  // win off the histogram.
+  const tries = vm ? vectorTries.length : guesses.length;
   if (won) {
     s.wins++;
-    s.streak = s.lastDay === day - 1 ? s.streak + 1 : 1;
+    if (missed === 0) {
+      // Consecutive weekdays, or only a weekend in between.
+      s.streak = (s.streak || 0) + 1;
+    } else if (missed === 1 && freezeAvailable(s, day)) {
+      // Exactly one missed weekday, and a freeze is available: bridge it.
+      s.streak = (s.streak || 0) + 1;
+      s.freezeUsedOn = day;
+      froze = true;
+    } else {
+      s.streak = 1;
+    }
     s.max = Math.max(s.max, s.streak);
-    s.dist[guesses.length - 1]++;
+    const bucket = vm ? s.vdist : s.dist;
+    if (tries >= 1 && tries <= bucket.length) bucket[tries - 1]++;
   } else {
     s.streak = 0;
   }
+
+  // Closest guess, so improvement is visible even on a loss.
+  const best = closestMiss();
+  s.history.push({ d: day, w: won, n: tries, m: best, v: vm });
+  if (s.history.length > 60) s.history = s.history.slice(-60);
+  // Near misses are counted separately: they are not wins and must never
+  // inflate win rate, but they are worth surfacing as their own achievement.
+  if (isNearMiss()) s.near = (s.near || 0) + 1;
+
   s.lastDay = day;
   s.lastId = DAILY.puzzle.id;
   save(KEY_STATS, s);
+  if (froze) toast("\u2744\ufe0f Streak freeze used \u2014 streak saved");
+}
+
+/* Mean distance from the answer, older half vs newer half. Win rate hides
+   improvement; this shows it. */
+function accuracyTrend(history) {
+  const scored = history.filter((h) => typeof h.m === "number");
+  if (scored.length < 6) return null;
+  const half = Math.floor(scored.length / 2);
+  const avg = (a) => a.reduce((t, h) => t + h.m, 0) / a.length;
+  return { then: avg(scored.slice(0, half)), now: avg(scored.slice(half)),
+           n: scored.length };
 }
 
 function renderStats() {
-  const s = load(KEY_STATS, blankStats());
+  const s = normaliseStats(load(KEY_STATS, blankStats()));
   $("s-played").textContent = s.played;
   $("s-win").textContent = s.played ? Math.round((s.wins / s.played) * 100) : 0;
   $("s-streak").textContent = s.streak;
   $("s-max").textContent = s.max;
-  const peak = Math.max(1, ...s.dist);
-  $("dist").innerHTML = s.dist.map((n, i) => {
-    const isLast = !practiceMode && finished && won && guesses.length === i + 1;
+
+  const rank = rankFor(s.played);
+  const next = nextRank(s.played);
+  $("rank-name").textContent = rank.name;
+  $("rank-next").textContent = next
+    ? `${next.at - s.played} more to ${next.name}`
+    : "Top rank reached";
+
+  const trend = accuracyTrend(s.history);
+  const el = $("trend");
+  if (!trend) {
+    el.textContent = "Play a few more to see your accuracy trend.";
+  } else {
+    const delta = trend.then - trend.now;
+    const dir = delta > 0.05 ? "improving" : delta < -0.05 ? "slipping" : "steady";
+    el.innerHTML = "Average miss <b>" + trend.then.toFixed(1) + "</b> \u2192 <b>" +
+      trend.now.toFixed(1) + "</b> over your last " + trend.n +
+      ' games \u00b7 <span class="trend-' + dir + '">' + dir + "</span>";
+  }
+
+  const freeze = $("freeze");
+  if (freezeAvailable(s, DAILY.number)) {
+    freeze.innerHTML = "\u2744\ufe0f Streak freeze <b>ready</b> \u2014 one missed weekday forgiven";
+  } else {
+    const back = FREEZE_COOLDOWN_DAYS - (DAILY.number - s.freezeUsedOn);
+    freeze.innerHTML = "\u2744\ufe0f Streak freeze recharges in <b>" + back + "</b> days";
+  }
+  $("weekend-note").textContent =
+    "Weekends never break a streak \u2014 Friday to Monday counts as consecutive.";
+
+  const nearEl = $("near-count");
+  if (s.near > 0) {
+    nearEl.hidden = false;
+    nearEl.innerHTML = "\uD83E\uDD1E <b>" + s.near + "</b> near miss" +
+      (s.near === 1 ? "" : "es") + " \u2014 within half a point but out of guesses";
+  } else {
+    nearEl.hidden = true;
+  }
+
+  // Show the distribution for the mode in play - they have different try
+  // counts, so stacking them in one chart would be meaningless.
+  const vm = vectorMode();
+  const bars = vm ? s.vdist : s.dist;
+  $("dist-title").textContent = vm
+    ? "Vector distribution (of " + VECTOR_TRIES + ")"
+    : "Guess distribution (of " + MAX_GUESSES + ")";
+  const other = vm ? s.dist : s.vdist;
+  const otherTotal = other.reduce((t, n) => t + n, 0);
+  const otherEl = $("dist-other");
+  if (otherTotal > 0) {
+    otherEl.hidden = false;
+    otherEl.textContent = otherTotal + (vm ? " score" : " vector") + " win" +
+      (otherTotal === 1 ? "" : "s") + " recorded in the other mode.";
+  } else {
+    otherEl.hidden = true;
+  }
+
+  const peak = Math.max(1, ...bars);
+  $("dist").innerHTML = bars.map((n, i) => {
+    const tries = vm ? vectorTries.length : guesses.length;
+    const isLast = !practiceMode && finished && won && tries === i + 1;
     return '<div class="dist-row"><span>' + (i + 1) + "</span>" +
       '<div class="dist-bar' + (n && isLast ? "" : n ? "" : " dim") + '" style="width:' +
       Math.max(8, (n / peak) * 100) + '%">' + n + "</div></div>";
   }).join("");
 }
 
+const PRACTICE_LIMIT = 3;
+const KEY_PRACTICE = "cvssdle.practice.v1";
+const KEY_MODE = "cvssdle.mode.v1";
+
+/* ---------- vector mode ----------
+   Score mode is solvable without knowing any CVSS: the answer carries about
+   3.4 bits of entropy, 9.8 alone wins a third of the time, and a plain binary
+   search wins every time. Vector mode asks for the eight metrics instead -
+   2,592 combinations - so the only route is actually reading the advisory.
+
+   Opt-in for now. The daily score game is untouched for anyone who ignores it. */
+const VECTOR_TRIES = 4;
+
+/* ---------- mode lock ----------
+   The two modes share one answer, and finishing either one puts the whole
+   answer on screen: score mode reveals a metric per miss and prints the full
+   vector at the end, vector mode prints the score. So switching mode on the
+   same puzzle is not a mode switch, it is a lookup - play score mode, read the
+   vector off the result card, switch, and solve vector in one try. Abandoning
+   the first mode before it finishes dodges the recordStats day guard too, so
+   the laundered win records as genuine.
+
+   The leak lives in the player's memory, not in storage, so hiding the reveal
+   would not fix it. Instead the first move of the day commits the mode, and
+   the other one unlocks with tomorrow's puzzle.
+
+   Practice is exempt: it draws a different puzzle each time and records
+   nothing, so there is nothing to launder. */
+const KEY_LOCK = "cvssdle.modelock.v1";
+
+function modeLock() {
+  const l = load(KEY_LOCK, null);
+  if (!l || l.day !== DAILY.number || l.id !== DAILY.puzzle.id) return null;
+  return l.mode === "vector" ? "vector" : "score";
+}
+
+/* Called on the first daily move in either mode. First writer wins. */
+function commitMode() {
+  if (practiceMode || modeLock()) return;
+  save(KEY_LOCK, {
+    day: DAILY.number,
+    id: DAILY.puzzle.id,
+    mode: modePref() === "vector" ? "vector" : "score",
+  });
+}
+
+/* What the player picked, independent of today's lock - this is the setting
+   that carries over to tomorrow. */
+function modePref() {
+  try { return localStorage.getItem(KEY_MODE) === "vector" ? "vector" : "score"; }
+  catch { return "score"; }
+}
+
+/* The mode actually in force. Every caller resolves through here, so the lock
+   applies to rendering, scoring, persistence and sharing without each of them
+   having to know it exists. */
+function vectorMode() {
+  if (!practiceMode) {
+    const lock = modeLock();
+    if (lock) return lock === "vector";
+  }
+  return modePref() === "vector";
+}
+
+function setVectorMode(on) {
+  try { localStorage.setItem(KEY_MODE, on ? "vector" : "score"); } catch { /* sandboxed */ }
+}
+
+/* The player's current selection, metric -> value. */
+let vectorPick = {};
+/* One entry per submitted attempt: { pick, correct: {metric: bool}, score } */
+let vectorTries = [];
+
+/* Nothing is pre-selected. An earlier build defaulted every metric to the
+   worst value, which spells AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H - CVSS 9.8,
+   and the single most common vector in the KEV catalog. Opening vector mode
+   and pressing Submit without touching anything therefore won outright on 274
+   of the 751 puzzles in the pool, 36.5%. That is precisely the "memorise one
+   answer and beat the people who understand the rubric" failure vector mode
+   exists to remove, so there is no safe default: the player has to choose all
+   eight. */
+/* Option order within each metric row, shuffled per puzzle.
+   CVSS lists every metric's values worst-first, so the leftmost option in all
+   eight rows spelled AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H - the 9.8 vector, and
+   274 of the 751 puzzles in the pool. Clicking straight down the left edge of
+   the picker therefore won better than one day in three, with no reading and
+   no CVSS at all. Removing the pre-filled default only made that eight clicks
+   instead of none.
+
+   The order is derived from the puzzle id alone. It must not depend on the
+   answer, or the layout would leak it; seeded this way the left column spells
+   a uniformly random vector, which is the answer 1 time in 2,592 rather than
+   1 in 3. It has to be stable too - renderMetricPicker re-runs on every click,
+   and reshuffling would move options out from under the cursor. */
+let metricOrder = {};
+
+function orderSeed(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function buildMetricOrder(id) {
+  let s = orderSeed(id || "cvssdle") || 1;
+  const next = () => {
+    s ^= (s << 13); s >>>= 0;
+    s ^= (s >>> 17);
+    s ^= (s << 5);  s >>>= 0;
+    return s;
+  };
+  const out = {};
+  for (const k of HINT_ORDER) {
+    const codes = Object.keys(METRIC_NAMES[k][1]);
+    for (let i = codes.length - 1; i > 0; i--) {
+      const j = next() % (i + 1);
+      const t = codes[i]; codes[i] = codes[j]; codes[j] = t;
+    }
+    out[k] = codes;
+  }
+  return out;
+}
+
+function resetVector() {
+  vectorPick = {};
+  vectorTries = [];
+  metricOrder = buildMetricOrder(puzzle && puzzle.id);
+}
+
+/* Every metric chosen - the only state from which a vector may be submitted. */
+function vectorComplete(pick) {
+  return HINT_ORDER.every((k) => typeof pick[k] === "string" && pick[k]);
+}
+
+function vectorMatches(pick, answer) {
+  const out = {};
+  for (const k of HINT_ORDER) out[k] = pick[k] === answer[k];
+  return out;
+}
+
+function vectorSolved(correct) {
+  return HINT_ORDER.every((k) => correct[k]);
+}
+
+function vectorString(pick) {
+  return "CVSS:3.1/" + HINT_ORDER.map((k) => k + ":" + (pick[k] || "?")).join("/");
+}
+
+function renderMetricPicker() {
+  const wrap = $("metric-picker");
+  wrap.innerHTML = "";
+  for (const key of HINT_ORDER) {
+    const [label, values] = METRIC_NAMES[key];
+    const row = document.createElement("div");
+    row.className = "metric-row";
+
+    const lab = document.createElement("div");
+    lab.className = "metric-label";
+    lab.textContent = label;
+    row.appendChild(lab);
+
+    const opts = document.createElement("div");
+    opts.className = "metric-opts";
+    for (const code of (metricOrder[key] || Object.keys(values))) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "metric-opt";
+      b.textContent = values[code];
+      b.setAttribute("aria-pressed", String(vectorPick[key] === code));
+      b.setAttribute("aria-label", label + ": " + values[code]);
+      // addEventListener rather than an inline handler: the values come from
+      // puzzle data, and templating them into markup would be an injection sink.
+      b.addEventListener("click", () => {
+        vectorPick[key] = code;
+        renderMetricPicker();
+        renderVectorPreview();
+      });
+      opts.appendChild(b);
+    }
+    row.appendChild(opts);
+    wrap.appendChild(row);
+  }
+}
+
+function renderVectorPreview() {
+  const done = vectorComplete(vectorPick);
+  $("vector-preview").textContent = vectorString(vectorPick);
+  // Severity band, never the exact number. The number is a perfect oracle:
+  // of the 84 distinct scores a vector can take, exactly one - 9.8 - is
+  // produced by a single vector out of all 2,592. That vector is also 36.5% of
+  // the KEV pool, so a live score readout let anyone dial the picker until it
+  // read 9.8 and submit the most likely answer in the catalogue knowing
+  // nothing at all. A band narrows to 61 candidates instead of 1, which keeps
+  // the "your picks have consequences" feedback without handing over the
+  // answer. The exact score still appears on every submitted attempt, where it
+  // costs a try, and on the final reveal.
+  $("vector-score").textContent = done ? severityFor(scoreVector(vectorPick)) : "\u2014";
+
+  const chosen = HINT_ORDER.filter((k) => vectorPick[k]).length;
+  const btn = $("btn-submit-vector");
+  if (btn) {
+    btn.disabled = !done;
+    btn.textContent = done
+      ? "Submit vector"
+      : "Pick all eight (" + chosen + "/" + HINT_ORDER.length + ")";
+  }
+
+  const left = VECTOR_TRIES - vectorTries.length;
+  $("vector-tries").textContent =
+    left + (left === 1 ? " try left" : " tries left") +
+    " \u00b7 you are told how many metrics are right, not which";
+}
+
+/* How many metrics an attempt got right. The count is the only feedback the
+   player receives - see the note on renderVectorTries. */
+function vectorHits(correct) {
+  return HINT_ORDER.filter((k) => correct[k]).length;
+}
+
+/* Metrics the player never once got right, across every attempt. Only
+   meaningful after the game ends, where it is the single most useful thing the
+   board can tell them. */
+function vectorNeverRight() {
+  if (!vectorTries.length) return [];
+  return HINT_ORDER.filter((k) => vectorTries.every((t) => !t.correct[k]));
+}
+
+function renderVectorTries() {
+  const wrap = $("guesses");
+  wrap.innerHTML = "";
+  // Per-metric marking is withheld during play and shown once the game is
+  // decided. While the game is live, telling a player which metrics landed
+  // lets them keep those and cycle the rest, which solves any vector in three
+  // attempts without reading the advisory. Once the answer is on screen that
+  // information is already theirs, and seeing it attempt by attempt is how you
+  // learn what you misread.
+  const review = finished;
+  const never = review ? vectorNeverRight() : [];
+  for (const t of vectorTries) {
+    const row = document.createElement("div");
+    const hits = vectorHits(t.correct);
+    row.className = "vtry" + (hits === HINT_ORDER.length ? " solved" : "");
+    for (const k of HINT_ORDER) {
+      const cell = document.createElement("span");
+      cell.className = "vcell" + (review
+        ? (t.correct[k] ? " hit" : " miss") + (never.includes(k) ? " never" : "")
+        : "");
+      cell.textContent = k + ":" + t.pick[k];
+      if (review) {
+        cell.title = METRIC_NAMES[k][0] + ": " +
+          (METRIC_NAMES[k][1][t.pick[k]] || t.pick[k]) +
+          (t.correct[k] ? " \u2014 correct" : " \u2014 wrong");
+      }
+      row.appendChild(cell);
+    }
+    const cnt = document.createElement("span");
+    cnt.className = "vtry-count";
+    cnt.innerHTML = "<b>" + hits + "</b> of " + HINT_ORDER.length + " correct";
+    row.appendChild(cnt);
+
+    const sc = document.createElement("span");
+    sc.className = "vtry-score";
+    sc.textContent = t.score.toFixed(1);
+    row.appendChild(sc);
+    wrap.appendChild(row);
+  }
+
+  // Name the metric that was wrong every single time - on this board that is
+  // the whole lesson, and it is invisible if you only see counts.
+  const old = $("vtry-lesson");
+  if (old) old.remove();
+  if (review && never.length) {
+    const note = document.createElement("div");
+    note.className = "vtry-lesson";
+    note.id = "vtry-lesson";
+    const labels = never.map((k) =>
+      METRIC_NAMES[k][0] + " \u2192 " + (METRIC_NAMES[k][1][parseVector()[k]] ||
+        parseVector()[k]));
+    note.textContent = (never.length === 1
+      ? "Never got right: "
+      : "Never got right: ") + labels.join(" \u00b7 ");
+    wrap.appendChild(note);
+  }
+}
+
+function submitVector() {
+  if (finished) return;
+  // Belt and braces: the button is disabled while incomplete, but a partial
+  // vector must never reach scoring even if that is bypassed.
+  if (!vectorComplete(vectorPick)) {
+    toast("Pick all eight metrics first");
+    return;
+  }
+  const answer = parseVector();
+  const correct = vectorMatches(vectorPick, answer);
+  const score = scoreVector(vectorPick);
+  vectorTries.push({ pick: { ...vectorPick }, correct, score });
+  if (!practiceMode) commitMode();
+
+  if (vectorSolved(correct)) { finished = true; won = true; }
+  else if (vectorTries.length >= VECTOR_TRIES) { finished = true; won = false; }
+
+  renderVectorTries();
+  renderVectorPreview();
+  applyMode();
+  if (finished) {
+    // The hint grid is masked throughout vector mode, so it has to be
+    // re-rendered once the game ends or the answer stays hidden behind eight
+    // question marks while the result card shows the full vector.
+    renderHints();
+    if (!practiceMode) { recordStats(); persist(); }
+    renderResult();
+  } else if (!practiceMode) {
+    persist();
+  }
+}
+
+/* How many of the eight metrics the player's best attempt got right. Used for
+   the share grid and the result line, so progress is visible even on a loss. */
+function vectorBest() {
+  if (!vectorTries.length) return 0;
+  return Math.max(...vectorTries.map((t) => vectorHits(t.correct)));
+}
+
+/* Practice is capped per day. Unlimited practice makes the daily puzzle feel
+   incidental, which is the opposite of what a daily game needs. */
+function practiceUsed() {
+  const p = load(KEY_PRACTICE, null);
+  return p && p.day === DAILY.number ? (p.n || 0) : 0;
+}
+
 function startPractice() {
+  const used = practiceUsed();
+  if (used >= PRACTICE_LIMIT) {
+    toast("Practice limit reached \u2014 back tomorrow");
+    const btn = $("btn-another");
+    if (btn) btn.disabled = true;
+    return;
+  }
+  save(KEY_PRACTICE, { day: DAILY.number, n: used + 1 });
+
   practiceMode = true;
   // Avoid handing out the same puzzle twice in a row.
   let next = puzzle;
@@ -1228,30 +2413,88 @@ function startPractice() {
   }
   puzzle = next;
   guesses = []; finished = false; won = false;
+  resetVector();
   clearTimeout(countdownTimer);
   $("result").hidden = true;
-  $("play-area").hidden = false;
   const box = $("share-fallback");
   if (box) box.remove();
   $("guess").value = "";
-  renderPuzzle(); renderGuesses(); renderHints();
-  $("guess").focus();
+  renderPuzzle(); renderHints();
+  if (vectorMode()) { renderMetricPicker(); renderVectorPreview(); renderVectorTries(); }
+  else { renderGuesses(); $("guess").focus(); }
+  applyMode();
   document.getElementById("dlg-stats").close();
   toast("New practice vulnerability");
+  const left = PRACTICE_LIMIT - practiceUsed();
+  const btn = $("btn-another");
+  if (btn) {
+    btn.disabled = left <= 0;
+    btn.textContent = left > 0 ? `Practice again (${left} left)` : "No practice left";
+  }
+  const pbtn = $("btn-practice");
+  if (pbtn) pbtn.disabled = left <= 0;
+}
+
+/* Show whichever play area the current mode needs, and hide the other. */
+function applyMode() {
+  const v = vectorMode();
+  const lock = practiceMode ? null : modeLock();
+  $("play-area").hidden = v || finished;
+  $("vector-area").hidden = !v || finished;
+  $("mode-score").setAttribute("aria-pressed", String(!v));
+  $("mode-vector").setAttribute("aria-pressed", String(v));
+
+  // Once committed, the other mode is not a choice today - say so on the
+  // button rather than letting it look broken when clicked.
+  $("mode-score").disabled = Boolean(lock) && lock !== "score";
+  $("mode-vector").disabled = Boolean(lock) && lock !== "vector";
+
+  if (lock) {
+    $("mode-note").textContent = (v
+      ? "Pick all eight metrics. The score is derived \u2014 4 tries."
+      : "Guess the base score \u2014 6 tries, one metric revealed per miss.") +
+      " \u00b7 Locked in for today \u2014 the other mode returns with tomorrow's puzzle.";
+    return;
+  }
+  $("mode-note").textContent = v
+    ? "Pick all eight metrics. The score is derived \u2014 4 tries."
+    : "Guess the base score \u2014 6 tries, one metric revealed per miss.";
 }
 
 function startDaily() {
   practiceMode = false;
   puzzle = DAILY.puzzle;
   guesses = []; finished = false; won = false;
+  resetVector();
   const resumed = restore();
-  renderPuzzle(); renderGuesses(); renderHints();
+  // A board saved by a build that predates the lock still represents a mode
+  // the player has already seen metrics in. Commit it rather than handing
+  // them a free switch on upgrade.
+  if (resumed && (guesses.length || vectorTries.length)) commitMode();
+  renderPuzzle(); renderHints();
+  if (vectorMode()) { renderMetricPicker(); renderVectorPreview(); renderVectorTries(); }
+  else renderGuesses();
   if (resumed && finished) renderResult();
-  else { $("result").hidden = true; $("play-area").hidden = false; }
+  else { $("result").hidden = true; }
+  applyMode();
 }
 
 /* ---------- wiring ---------- */
 $("btn-guess").onclick = submitGuess;
+$("btn-submit-vector").onclick = submitVector;
+function switchMode(toVector) {
+  // Locked for today: the other mode would just be a lookup of an answer this
+  // player has already been shown part of.
+  if (!practiceMode && modeLock() && modeLock() !== (toVector ? "vector" : "score")) {
+    toast("Mode is locked until tomorrow's puzzle");
+    return;
+  }
+  if (vectorMode() === toVector) return;
+  setVectorMode(toVector);
+  if (practiceMode) startPractice(); else startDaily();
+}
+$("mode-score").onclick = () => switchMode(false);
+$("mode-vector").onclick = () => switchMode(true);
 $("guess").addEventListener("keydown", (e) => { if (e.key === "Enter") submitGuess(); });
 $("btn-help").onclick = () => $("dlg-help").showModal();
 $("btn-stats").onclick = () => { renderStats(); $("dlg-stats").showModal(); };
@@ -1266,6 +2509,10 @@ document.querySelectorAll("[data-close]").forEach((b) => {
 });
 
 startDaily();
+renderChallenge();
+// Clicking a challenge link while already on the site is a same-document
+// navigation: the hash changes but nothing reloads, so react to it explicitly.
+addEventListener("hashchange", renderChallenge);
 if (!load(KEY_STATS, null)) $("dlg-help").showModal();
 $("guess").focus();
 </script>

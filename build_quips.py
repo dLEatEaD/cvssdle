@@ -241,6 +241,210 @@ LOSS = ("Out of guesses", [
     "Tomorrow is another CVE. This one belongs to the void.",
 ])
 
+# Shown when the player ran out of guesses but landed within 0.5 of the answer.
+# Deliberately not a win - but being half a point out is genuinely good CVSS
+# work and deserves to be told apart from a wild miss.
+NEAR = ("So close \U0001F91E", [
+    "Within half a point. That is a correct severity call by any practical measure.",
+    "Close enough that a real triage would have reached the same decision.",
+    "Half a point out. The rubric split hairs with you.",
+    "You had the shape of it exactly right.",
+    "That is the right answer with a rounding dispute attached.",
+    "Near miss. Your instincts were sound, the arithmetic was unlucky.",
+    "So close the difference would not change a single remediation priority.",
+    "A fraction out. Nobody would argue with your triage.",
+    "You read the vector correctly and landed a whisker away.",
+    "That margin is smaller than most vendors' own disagreements.",
+    "Close enough to be right in every way that matters operationally.",
+    "Half a point. Somewhere a CVSS calculator is being smug.",
+    "You were in the right neighbourhood and knocked on the wrong door.",
+    "Correct severity band, wrong decimal. Take the moral victory.",
+    "That is a miss on paper and a hit in practice.",
+    "Painfully close. The kind of miss that stings more than a bad guess.",
+    "You bracketed it perfectly and still could not land it.",
+    "A near miss at this range is skill, not luck.",
+    "So close the scoring guide would call it a judgement call.",
+    "That is within the margin most analysts argue over anyway.",
+    "Nearly. The vector was telling you the truth and you nearly heard it.",
+    "Half a point adrift, and a perfectly defensible answer.",
+    "You would pass peer review with that, just not this game.",
+    "Close. Genuinely, respectably close.",
+    "That one was decided by a single metric value.",
+    "A hair out. Your reasoning was right.",
+    "So near. The base score was being needlessly precise.",
+    "Within half a point and out of guesses. Brutal combination.",
+    "You found the right answer and then walked past it.",
+    "That is the best kind of loss. Still a loss, mind.",
+])
+
+
+# Vector mode has four tries and is scored on metrics, not a number, so it
+# needs its own pools: a score-mode line like "six attempts" is simply wrong
+# here, and "you brute-forced it" is the one thing vector mode makes impossible.
+VECTOR_TIERS = {
+    1: ("Vector nailed \U0001F9E9", [
+        "Eight metrics, first attempt, no reveals. That is the whole rubric from memory.",
+        "One submission. You did not guess that, you derived it.",
+        "First try on 2,592 combinations. There is no lucky version of that.",
+        "Straight to the vector. The advisory never stood a chance.",
+        "You read it once and scored it exactly. That is the job, done properly.",
+        "No feedback, no hints, eight for eight. Genuinely elite.",
+        "Perfect vector, first pass. Somewhere a CVSS working group member nods.",
+        "That is not scoring, that is fluency.",
+        "You built the answer before the game could tell you anything.",
+        "One attempt. Every metric. Nothing to correct.",
+        "Clean sheet on the first submission. No notes.",
+        "You skipped the iteration entirely and just knew it.",
+        "Eight correct metrics with zero information. Show-off.",
+        "First-pass exact vector. This is the hardest thing the game asks for.",
+        "You did not need the feedback loop. You are the feedback loop.",
+        "Flawless. The kind of result that makes people check the code for bugs.",
+        "Called every metric blind. The advisory was an open book.",
+        "That is a vector built from understanding, not elimination.",
+        "One shot, eight metrics, full marks. Absurd.",
+        "You scored it the way NVD scored it, on the first go.",
+        "No trial, no error, just the answer.",
+        "Perfect first vector. Your triage queue must be a peaceful place.",
+        "Eight out of eight, cold. That is the ceiling of this game.",
+        "You read the words and produced the exact vector. Remarkable.",
+        "First attempt. The search space did not get a say.",
+        "That is the rubric internalised, not memorised.",
+        "Immaculate. One submission and the whole vector fell out correct.",
+        "You have clearly done this for a living.",
+        "Eight metrics, one try, no help. Take the rest of the day.",
+        "A first-attempt vector is the real high score. You just set it.",
+    ]),
+    2: ("Vector solved \U0001F9E9", [
+        "Two attempts. One probe, one correction, done.",
+        "You found the shape immediately and fixed the rest.",
+        "Second try. That is efficient reading, not luck.",
+        "One miss to calibrate, then the full vector. Textbook.",
+        "Quick convergence. You knew which metric was wrong before the game said so.",
+        "Two submissions for eight metrics. Comfortable.",
+        "You corrected the right thing first time. That is the skill.",
+        "A single adjustment and the whole vector locked in.",
+        "Two tries, no flailing. You were reasoning, not sampling.",
+        "That is how someone who actually reads advisories plays it.",
+        "Second attempt exact. The first one was basically right anyway.",
+        "You spent one guess learning and one guess winning.",
+        "Clean. Two passes and the vector was yours.",
+        "Minimal correction, maximum result.",
+        "You identified your own error faster than the feedback did.",
+        "Two attempts on 2,592 combinations is genuinely strong.",
+        "Nearly first-try. The near-first-try is underrated.",
+        "One nudge was all it needed. Confident work.",
+        "Second submission, perfect vector. No wasted motion.",
+        "You read the description properly. It shows.",
+        "That is a tight loop. One hypothesis, one fix.",
+        "Two tries. The rubric put up almost no resistance.",
+        "Solid. You were never actually lost.",
+        "A single wrong metric, then a flawless vector.",
+        "Fast and deliberate. The good combination.",
+        "You did not brute-force anything. There is nothing to brute-force.",
+        "Two attempts and done. Quietly impressive.",
+        "Efficient. You treated the first attempt as information, not a gamble.",
+        "Second-try vector. Comfortably above the curve.",
+        "You narrowed eight unknowns in one move. That is real CVSS work.",
+    ]),
+    3: ("Vector solved \U0001F9E9", [
+        "Three attempts. You worked it out, metric by metric.",
+        "Methodical. Every pass got you closer and you finished it.",
+        "That is proper iterative scoring. Nothing wrong with earning it.",
+        "Three tries, full vector. The process worked.",
+        "You kept the metrics that landed and fixed the ones that did not.",
+        "Patient work. The vector came apart under pressure.",
+        "Three passes to eight correct metrics. Respectable.",
+        "You used the feedback exactly the way it is meant to be used.",
+        "Not flashy, but completely correct. That counts.",
+        "Steady convergence. No panic, no scattergun.",
+        "Three attempts and a perfect vector. Earned.",
+        "You narrowed it properly instead of guessing wildly.",
+        "That is what reading the advisory twice gets you.",
+        "Solved with one try to spare. Comfortable enough.",
+        "Three rounds of honest reasoning. Good result.",
+        "You held your nerve on the metrics you had right.",
+        "The long way round, but the vector is exact.",
+        "Three tries. The rubric made you work and you did.",
+        "Incremental and correct. Nothing to apologise for.",
+        "You debugged your own vector. That is the exercise.",
+        "Three attempts, eight metrics, zero errors at the end.",
+        "A real solve. You reasoned your way there.",
+        "Took some doing. You did it.",
+        "Three passes and the advisory gave it up.",
+        "You converged. That is all the game asks.",
+        "Good discipline. You changed one thing at a time.",
+        "Three tries on 2,592 combinations is still a strong result.",
+        "The vector resisted, briefly.",
+        "Worked for it, got it. The best kind of win.",
+        "Three attempts. Solid, unglamorous, correct.",
+    ]),
+    4: ("Vector solved \U0001F9E9", [
+        "Last attempt. That was uncomfortably close to a loss.",
+        "Four tries, final submission, exact vector. Clutch.",
+        "You got there on the last possible move. Take it.",
+        "Right at the buzzer. The vector nearly got away.",
+        "Final attempt, full marks. Nerve held.",
+        "That is the narrowest possible win and it counts the same.",
+        "Four tries. You spent every one of them and earned it.",
+        "Down to the last submission and you landed it.",
+        "Hard-fought. Eight metrics do not always come quietly.",
+        "You were one wrong metric from nothing. You found it.",
+        "Final-try vector. Genuinely tense.",
+        "That advisory did not want to be scored. You scored it anyway.",
+        "No tries left and no errors left. Perfect timing.",
+        "You used the whole budget. That is what it is for.",
+        "Four attempts, exact vector, zero margin.",
+        "Scraped it. A win is a win and this one was work.",
+        "The last submission was the right one. Barely.",
+        "You fixed the final metric with nothing in reserve.",
+        "Four tries. The rubric made you suffer for that.",
+        "Clutch solve. Those stay with you longer than the easy ones.",
+        "Right on the edge. Exactly where the good ones happen.",
+        "You held it together when it mattered.",
+        "Final attempt exact. That is a real comeback.",
+        "Four passes to prise eight metrics loose. Well done.",
+        "No room left at all. Still correct.",
+        "You earned that one the hard way.",
+        "Last try, full vector. The best kind of relief.",
+        "That was going badly right up until it was not.",
+        "Four attempts and a perfect finish. Hard-won.",
+        "The vector held out as long as it could.",
+    ]),
+}
+
+VECTOR_LOSS = ("Vector unsolved", [
+    "Four attempts and the vector kept at least one secret.",
+    "Eight metrics is a lot to be right about all at once.",
+    "Close on most of them is still wrong on the whole.",
+    "The vector wins this round. It usually does.",
+    "You had most of it. The rubric only accepts all of it.",
+    "One stubborn metric, and that is the whole game.",
+    "This is the hard mode, and it just demonstrated why.",
+    "No shortcuts here. That is the point, and it bit.",
+    "The advisory was vaguer than the vector it produced.",
+    "Scope and impact are where these usually come apart.",
+    "You were reasoning correctly about the wrong metric.",
+    "Four tries, 2,592 combinations. The odds were always rude.",
+    "The answer was in the description. It just was not obvious.",
+    "Some vectors only make sense after you see them.",
+    "Even NVD analysts argue about a few of these.",
+    "Not today. The metrics held the line.",
+    "You will recognise this pattern next time.",
+    "That one rewarded a reading nobody would call natural.",
+    "Out of attempts, not out of understanding.",
+    "The vector was more pedantic than the vulnerability deserved.",
+    "Partial credit is not a thing here. Harsh, but honest.",
+    "Eight simultaneous judgement calls. One of them went.",
+    "The exploit was clear. Its scoring was not.",
+    "You lost to a single metric value. Infuriating.",
+    "Tomorrow's vector will be more reasonable. Probably not.",
+    "This is why vector mode exists. It is genuinely hard.",
+    "The rubric is unmoved by how close you were.",
+    "Four passes and it still would not resolve.",
+    "Some advisories are written to defeat exactly this.",
+    "Beaten by the vector. There is no shame in that one.",
+])
+
 
 def js_array(items: list[str], indent: str) -> str:
     return "\n".join(f"{indent}{json.dumps(s, ensure_ascii=False)}," for s in items)
@@ -252,6 +456,16 @@ def main() -> None:
         assert len(set(quips)) == len(quips), f"tier {n} has duplicates"
     assert len(LOSS[1]) >= REQUIRED, f"loss has {len(LOSS[1])}"
     assert len(set(LOSS[1])) == len(LOSS[1]), "loss has duplicates"
+    assert len(NEAR[1]) >= REQUIRED, f"near has {len(NEAR[1])}"
+    assert len(set(NEAR[1])) == len(NEAR[1]), "near has duplicates"
+    for n, (_, quips) in VECTOR_TIERS.items():
+        assert len(quips) >= REQUIRED, f"vector tier {n} has {len(quips)}"
+        assert len(set(quips)) == len(quips), f"vector tier {n} has duplicates"
+    assert len(VECTOR_LOSS[1]) >= REQUIRED, f"vector loss has {len(VECTOR_LOSS[1])}"
+    assert len(set(VECTOR_LOSS[1])) == len(VECTOR_LOSS[1]), "vector loss has duplicates"
+    # The vector pools are indexed by attempt count, so they must cover every
+    # try the game actually allows.
+    assert set(VECTOR_TIERS) == {1, 2, 3, 4}, "vector tiers must cover 1-4 tries"
 
     blocks = []
     for n, (title, quips) in TIERS.items():
@@ -261,22 +475,42 @@ def main() -> None:
             f"    quips: [\n{js_array(quips, '      ')}\n    ],\n"
             f"  }},"
         )
+    vblocks = []
+    for n, (title, quips) in VECTOR_TIERS.items():
+        vblocks.append(
+            f"  {n}: {{\n"
+            f"    title: {json.dumps(title, ensure_ascii=False)},\n"
+            f"    quips: [\n{js_array(quips, '      ')}\n    ],\n"
+            f"  }},"
+        )
     verdicts = (
         "const VERDICTS = {\n" + "\n".join(blocks) + "\n};\n\n"
-        "const LOSS_QUIPS = [\n" + js_array(LOSS[1], "  ") + "\n];"
+        "const LOSS_QUIPS = [\n" + js_array(LOSS[1], "  ") + "\n];\n\n"
+        "const NEAR_QUIPS = [\n" + js_array(NEAR[1], "  ") + "\n];\n\n"
+        "const VECTOR_VERDICTS = {\n" + "\n".join(vblocks) + "\n};\n\n"
+        "const VECTOR_LOSS_QUIPS = [\n" + js_array(VECTOR_LOSS[1], "  ") + "\n];\n\n"
+        "const VECTOR_LOSS_HEADING = " +
+        json.dumps(VECTOR_LOSS[0], ensure_ascii=False) + ";"
     )
 
     text = TARGET.read_text()
     pattern = re.compile(
-        r"const VERDICTS = \{.*?\n\};\n\nconst LOSS_QUIPS = \[.*?\n\];", re.S
+        r"const VERDICTS = \{.*?\n\};\n\nconst LOSS_QUIPS = \[.*?\n\];"
+        r"(?:\n\nconst NEAR_QUIPS = \[.*?\n\];)?"
+        r"(?:\n\nconst VECTOR_VERDICTS = \{.*?\n\};\n\n"
+        r"const VECTOR_LOSS_QUIPS = \[.*?\n\];\n\n"
+        r"const VECTOR_LOSS_HEADING = .*?;)?", re.S
     )
     if not pattern.search(text):
         raise SystemExit("could not locate the VERDICTS / LOSS_QUIPS block")
     TARGET.write_text(pattern.sub(lambda _: verdicts, text, count=1))
 
-    total = sum(len(q) for _, q in TIERS.values()) + len(LOSS[1])
+    total = (sum(len(q) for _, q in TIERS.values()) + len(LOSS[1]) + len(NEAR[1])
+             + sum(len(q) for _, q in VECTOR_TIERS.values()) + len(VECTOR_LOSS[1]))
     print("Quips per tier:", {n: len(q) for n, (_, q) in TIERS.items()},
-          "loss:", len(LOSS[1]))
+          "loss:", len(LOSS[1]), "near:", len(NEAR[1]))
+    print("Vector quips per tier:", {n: len(q) for n, (_, q) in VECTOR_TIERS.items()},
+          "vector loss:", len(VECTOR_LOSS[1]))
     print(f"Wrote {total} quips into {TARGET.name}")
 
 
