@@ -421,6 +421,87 @@ dialog b { color: var(--cp-text); }
   box-shadow: var(--cp-glow);
 }
 .challenge b { color: var(--cp-accent); }
+
+/* ---- vector mode ---- */
+.vector-card { padding: 16px 18px; }
+.metric-row {
+  display: grid; grid-template-columns: 148px 1fr; gap: 10px;
+  align-items: center; margin-bottom: 7px;
+}
+.metric-label {
+  font-size: 0.74rem; color: var(--cp-text-muted); font-weight: 600;
+  text-transform: uppercase; letter-spacing: .05em;
+}
+.metric-opts { display: flex; gap: 5px; flex-wrap: wrap; }
+.metric-opt {
+  font-size: 0.76rem; padding: 5px 11px; border-radius: 7px; cursor: pointer;
+  border: 1px solid var(--cp-border); background: var(--cp-surface-soft);
+  color: var(--cp-text-muted); font-family: inherit;
+  transition: all .12s;
+}
+.metric-opt:hover { border-color: var(--cp-border-strong); color: var(--cp-text); }
+.metric-opt[aria-pressed="true"] {
+  background: var(--cp-accent); color: var(--cp-accent-fg);
+  border-color: var(--cp-accent); font-weight: 650;
+  box-shadow: 0 0 14px rgba(13,162,231,.3);
+}
+.vector-live {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 12px 0 12px; padding: 9px 11px;
+  background: var(--cp-surface-soft); border: 1px solid var(--cp-border);
+  border-radius: 8px;
+}
+.vector-live-label {
+  font-size: 0.62rem; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--cp-text-muted); font-weight: 700;
+}
+.vector-live code {
+  font-family: Consolas, "Courier New", Courier, monospace;
+  font-size: 0.73rem; color: var(--cp-accent); word-break: break-all; flex: 1;
+}
+.vector-live-score {
+  font-family: Consolas, "Courier New", Courier, monospace;
+  font-weight: 800; font-size: 1.1rem; color: var(--cp-text);
+}
+button.wide { width: 100%; }
+.vtry {
+  display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 7px;
+  align-items: center;
+}
+.vcell {
+  font-family: Consolas, "Courier New", Courier, monospace;
+  font-size: 0.7rem; padding: 4px 8px; border-radius: 6px;
+  border: 1px solid var(--cp-border); white-space: nowrap;
+}
+.vcell.hit {
+  background: rgba(34,197,94,.14); border-color: rgba(34,197,94,.45);
+  color: var(--cp-success); font-weight: 700;
+}
+.vcell.miss { background: var(--cp-surface-soft); color: var(--cp-text-muted); }
+.vtry-score {
+  margin-left: auto; font-family: Consolas, "Courier New", Courier, monospace;
+  font-weight: 700; font-size: 0.82rem; color: var(--cp-text-muted);
+}
+.mode-toggle {
+  display: flex; gap: 0; border: 1px solid var(--cp-border);
+  border-radius: 9px; overflow: hidden; margin-bottom: 14px;
+}
+.mode-toggle button {
+  flex: 1; border: none; cursor: pointer; font-family: inherit;
+  font-size: 0.78rem; font-weight: 650; padding: 9px 10px;
+  background: var(--cp-surface); color: var(--cp-text-muted);
+  transition: all .12s;
+}
+.mode-toggle button[aria-pressed="true"] {
+  background: var(--cp-accent); color: var(--cp-accent-fg);
+}
+.mode-note {
+  font-size: 0.68rem; color: var(--cp-text-muted); text-align: center;
+  margin: -8px 0 14px;
+}
+@media (max-width: 480px) {
+  .metric-row { grid-template-columns: 1fr; gap: 4px; }
+}
 .teaser {
   font-size: 0.68rem; color: var(--cp-text-muted); margin-top: 8px;
   text-transform: uppercase; letter-spacing: .09em; font-weight: 600;
@@ -475,6 +556,11 @@ footer a:hover { text-decoration: underline; }
 
 <main>
   <div class="challenge" id="challenge" hidden></div>
+  <div class="mode-toggle">
+    <button type="button" id="mode-score" aria-pressed="true">Guess the score</button>
+    <button type="button" id="mode-vector" aria-pressed="false">Build the vector</button>
+  </div>
+  <div class="mode-note" id="mode-note"></div>
   <div class="card" id="puzzle-card">
     <div class="puzzle-meta" id="puzzle-meta"></div>
     <p class="vuln-title" id="vuln-title"></p>
@@ -493,6 +579,20 @@ footer a:hover { text-decoration: underline; }
       <button class="primary" id="btn-guess">Guess</button>
     </div>
     <div class="scale-hint">CVSS v3.1 base score &middot; 0.1 increments &middot; 6 tries</div>
+  </div>
+
+  <div id="vector-area" hidden>
+    <div class="card vector-card">
+      <div class="hints-label">Build the vector</div>
+      <div id="metric-picker"></div>
+      <div class="vector-live">
+        <span class="vector-live-label">Your vector</span>
+        <code id="vector-preview"></code>
+        <span class="vector-live-score" id="vector-score"></span>
+      </div>
+      <button class="primary wide" id="btn-submit-vector">Submit vector</button>
+      <div class="scale-hint" id="vector-tries"></div>
+    </div>
   </div>
 
   <div class="card result" id="result" hidden></div>
@@ -716,18 +816,70 @@ function renderPuzzle() {
     : "Daily vulnerability scoring \u00b7 #" + puzzleNumber();
 }
 
-function parseVector() {
+function parseVectorString(s) {
   const out = {};
-  for (const part of puzzle.vector.split("/")) {
+  for (const part of String(s).split("/")) {
     const [k, v] = part.split(":");
     if (METRIC_NAMES[k]) out[k] = v;
   }
   return out;
 }
 
+function parseVector() {
+  return parseVectorString(puzzle.vector);
+}
+
+/* ---------- CVSS v3.1 base score ----------
+   Implements the specification directly (FIRST CVSS v3.1, section 7.1) rather
+   than approximating it: the game derives the score from the metrics a player
+   picks, so any drift here would teach the wrong rubric. check_cvss.py holds
+   this to NVD's published score for every puzzle in the pool. */
+const CVSS_W = {
+  AV: { N: 0.85, A: 0.62, L: 0.55, P: 0.2 },
+  AC: { L: 0.77, H: 0.44 },
+  // Privileges Required is worth more when Scope is Changed.
+  PR: { U: { N: 0.85, L: 0.62, H: 0.27 }, C: { N: 0.85, L: 0.68, H: 0.5 } },
+  UI: { N: 0.85, R: 0.62 },
+  CIA: { H: 0.56, L: 0.22, N: 0 },
+};
+
+/* The spec's Roundup: round to one decimal, always upward, with a guard
+   against binary floating point nudging an exact value over the line. */
+function cvssRoundUp(x) {
+  const i = Math.round(x * 100000);
+  if (i % 10000 === 0) return i / 100000;
+  return (Math.floor(i / 10000) + 1) / 10;
+}
+
+function scoreVector(v) {
+  const scope = v.S === "C" ? "C" : "U";
+  const iss = 1 - (1 - CVSS_W.CIA[v.C]) * (1 - CVSS_W.CIA[v.I]) * (1 - CVSS_W.CIA[v.A]);
+  const impact = scope === "U"
+    ? 6.42 * iss
+    : 7.52 * (iss - 0.029) - 3.25 * Math.pow(iss - 0.02, 15);
+  if (impact <= 0) return 0;
+  const exploitability =
+    8.22 * CVSS_W.AV[v.AV] * CVSS_W.AC[v.AC] * CVSS_W.PR[scope][v.PR] * CVSS_W.UI[v.UI];
+  const raw = scope === "U"
+    ? Math.min(impact + exploitability, 10)
+    : Math.min(1.08 * (impact + exploitability), 10);
+  return cvssRoundUp(raw);
+}
+
+function severityFor(score) {
+  if (score === 0) return "None";
+  if (score < 4) return "Low";
+  if (score < 7) return "Medium";
+  if (score < 9) return "High";
+  return "Critical";
+}
+
 function renderHints() {
   const vec = parseVector();
-  const reveal = finished ? HINT_ORDER.length : guesses.length;
+  // Vector mode must never reveal metrics - they are the answer.
+  const reveal = vectorMode()
+    ? (finished ? HINT_ORDER.length : 0)
+    : (finished ? HINT_ORDER.length : guesses.length);
   const grid = $("hint-grid");
   grid.innerHTML = "";
   HINT_ORDER.forEach((key, i) => {
@@ -751,6 +903,8 @@ function renderHints() {
   const lbl = $("hints-label");
   if (finished) {
     lbl.textContent = "CVSS vector \u00b7 full answer";
+  } else if (vectorMode()) {
+    lbl.innerHTML = "CVSS vector \u00b7 <em>this is what you're building</em>";
   } else if (shown === 0) {
     lbl.innerHTML = "CVSS vector \u00b7 <em>locked</em> \u2014 each wrong guess reveals one";
   } else {
@@ -786,6 +940,12 @@ function renderGuesses() {
 }
 
 function shareGrid() {
+  if (vectorMode()) {
+    // One row per attempt, one square per metric: green for a correct metric.
+    return vectorTries
+      .map((t) => HINT_ORDER.map((k) => (t.correct[k] ? "\uD83D\uDFE9" : "\u2B1C")).join(""))
+      .join("\n");
+  }
   return guesses.map((g) => {
     const diff = Math.round(Math.abs(puzzle.score - g) * 10) / 10;
     if (diff === 0) return "\uD83D\uDFE9";
@@ -807,6 +967,14 @@ function shareUrl() {
 }
 
 function shareText() {
+  if (vectorMode()) {
+    const head = practiceMode
+      ? "CVSSdle vector practice"
+      : "CVSSdle vector #" + puzzleNumber() + " " +
+        (won ? vectorTries.length : "X") + "/" + VECTOR_TRIES;
+    const url = challengeUrl();
+    return head + "\n" + shareGrid() + (url ? "\n" + url : "");
+  }
   const head = practiceMode
     ? "CVSSdle practice"
     : "CVSSdle #" + puzzleNumber() + " " +
@@ -826,14 +994,24 @@ function shareText() {
    has to actually play it. */
 function encodeChallenge() {
   if (practiceMode) return "";
+  if (vectorMode()) {
+    // Vector results carry a v prefix so the two modes stay distinguishable,
+    // and so a score-mode reader does not misreport a vector attempt.
+    return "c" + puzzleNumber() + ".v" + (won ? vectorTries.length : "x");
+  }
   const outcome = won ? guesses.length : (isNearMiss() ? "n" : "x");
   return "c" + puzzleNumber() + "." + outcome;
 }
 
 function parseChallenge(hash) {
-  const m = /^#c(\d+)\.([1-6]|n|x)$/.exec(hash || "");
+  const m = /^#c(\d+)\.(v?)([1-6]|n|x)$/.exec(hash || "");
   if (!m) return null;
-  return { number: Number(m[1]), outcome: m[2] };
+  const vector = m[2] === "v";
+  // A vector game only has four tries; reject a fragment claiming more.
+  if (vector && /^[56]$/.test(m[3])) return null;
+  // Near miss is a score-mode outcome only.
+  if (vector && m[3] === "n") return null;
+  return { number: Number(m[1]), outcome: m[3], vector };
 }
 
 function challengeUrl() {
@@ -854,9 +1032,13 @@ function renderChallenge() {
     el.hidden = true;
     return;
   }
-  const how = c.outcome === "x" ? "did not get it"
-    : c.outcome === "n" ? "came within half a point"
-    : "got it in " + c.outcome + "/" + MAX_GUESSES;
+  const how = c.outcome === "x"
+    ? "did not get it"
+    : c.outcome === "n"
+      ? "came within half a point"
+      : c.vector
+        ? "built the vector in " + c.outcome + "/" + VECTOR_TRIES
+        : "got it in " + c.outcome + "/" + MAX_GUESSES;
   el.hidden = false;
   el.innerHTML = "\uD83C\uDFAF <b>You've been challenged.</b> They " + how +
     " on today's puzzle. Your turn.";
@@ -1181,14 +1363,31 @@ function renderResult() {
 
   // Seed on the puzzle + guess count so the quip is stable across re-renders.
   const seed = puzzle.score * 10 + guesses.length + puzzle.id.length;
-  const verdict = won ? VERDICTS[guesses.length] : null;
-  const near = isNearMiss();
-  const heading = won
-    ? verdict.title
-    : (near ? "So close \uD83E\uDD1E" : "Out of guesses");
-  const quip = won
-    ? quipFor(verdict.quips, seed)
-    : quipFor(near ? NEAR_QUIPS : LOSS_QUIPS, seed);
+  const vm = vectorMode();
+  const verdict = won && !vm ? VERDICTS[guesses.length] : null;
+  const near = !vm && isNearMiss();
+  let heading, quip;
+  if (vm) {
+    const best = vectorBest();
+    heading = won
+      ? "Vector solved \uD83E\uDDE9"
+      : (best >= 6 ? "Close vector \uD83E\uDD1E" : "Vector unsolved");
+    quip = won
+      ? "Built it in " + vectorTries.length + "/" + VECTOR_TRIES +
+        ". That is the rubric, not a lucky number."
+      : "Best attempt had " + best + " of " + HINT_ORDER.length +
+        " metrics right.";
+  } else {
+    heading = won
+      ? verdict.title
+      : (near ? "So close \uD83E\uDD1E" : "Out of guesses");
+    quip = null;
+  }
+  if (!vm) {
+    quip = won
+      ? quipFor(verdict.quips, seed)
+      : quipFor(near ? NEAR_QUIPS : LOSS_QUIPS, seed);
+  }
 
   el.innerHTML =
     "<h2>" + heading + "</h2>" +
@@ -1326,7 +1525,11 @@ function persist() {
     // remaps day numbers to different CVEs, and replaying old guesses against a
     // new answer produces feedback that is confidently wrong.
     id: DAILY.puzzle.id,
+    // The two modes keep separate boards, so switching mode mid-day does not
+    // destroy a game in progress in the other one.
+    mode: vectorMode() ? "vector" : "score",
     guesses,
+    vectorTries,
     finished,
     won,
   });
@@ -1335,6 +1538,25 @@ function persist() {
 function restore() {
   const st = load(KEY_STATE, null);
   if (!st || st.day !== DAILY.number || st.id !== DAILY.puzzle.id) return false;
+  // A board saved in the other mode is not this board.
+  if ((st.mode || "score") !== (vectorMode() ? "vector" : "score")) return false;
+
+  if (vectorMode()) {
+    if (!Array.isArray(st.vectorTries) || st.vectorTries.length > VECTOR_TRIES) {
+      return false;
+    }
+    const ok = st.vectorTries.every((t) =>
+      t && t.pick && t.correct && typeof t.score === "number" &&
+      HINT_ORDER.every((k) => typeof t.pick[k] === "string"));
+    if (!ok) return false;
+    vectorTries = st.vectorTries;
+    finished = Boolean(st.finished);
+    won = Boolean(st.won);
+    const hit = vectorTries.some((t) => vectorSolved(t.correct));
+    if (won !== hit) won = hit;
+    if (!finished) finished = hit || vectorTries.length >= VECTOR_TRIES;
+    return true;
+  }
 
   // Saved state is user-writable, so validate rather than trust it.
   if (!Array.isArray(st.guesses) || st.guesses.length > MAX_GUESSES) return false;
@@ -1554,6 +1776,142 @@ function renderStats() {
 
 const PRACTICE_LIMIT = 3;
 const KEY_PRACTICE = "cvssdle.practice.v1";
+const KEY_MODE = "cvssdle.mode.v1";
+
+/* ---------- vector mode ----------
+   Score mode is solvable without knowing any CVSS: the answer carries about
+   3.4 bits of entropy, 9.8 alone wins a third of the time, and a plain binary
+   search wins every time. Vector mode asks for the eight metrics instead -
+   2,592 combinations - so the only route is actually reading the advisory.
+
+   Opt-in for now. The daily score game is untouched for anyone who ignores it. */
+const VECTOR_TRIES = 4;
+
+function vectorMode() {
+  try { return localStorage.getItem(KEY_MODE) === "vector"; } catch { return false; }
+}
+
+function setVectorMode(on) {
+  try { localStorage.setItem(KEY_MODE, on ? "vector" : "score"); } catch { /* sandboxed */ }
+}
+
+/* The player's current selection, metric -> value. */
+let vectorPick = {};
+/* One entry per submitted attempt: { pick, correct: {metric: bool}, score } */
+let vectorTries = [];
+
+function resetVector() {
+  vectorPick = { AV: "N", AC: "L", PR: "N", UI: "N", S: "U", C: "H", I: "H", A: "H" };
+  vectorTries = [];
+}
+
+function vectorMatches(pick, answer) {
+  const out = {};
+  for (const k of HINT_ORDER) out[k] = pick[k] === answer[k];
+  return out;
+}
+
+function vectorSolved(correct) {
+  return HINT_ORDER.every((k) => correct[k]);
+}
+
+function vectorString(pick) {
+  return "CVSS:3.1/" + HINT_ORDER.map((k) => k + ":" + pick[k]).join("/");
+}
+
+function renderMetricPicker() {
+  const wrap = $("metric-picker");
+  wrap.innerHTML = "";
+  for (const key of HINT_ORDER) {
+    const [label, values] = METRIC_NAMES[key];
+    const row = document.createElement("div");
+    row.className = "metric-row";
+
+    const lab = document.createElement("div");
+    lab.className = "metric-label";
+    lab.textContent = label;
+    row.appendChild(lab);
+
+    const opts = document.createElement("div");
+    opts.className = "metric-opts";
+    for (const code of Object.keys(values)) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "metric-opt";
+      b.textContent = values[code];
+      b.setAttribute("aria-pressed", String(vectorPick[key] === code));
+      b.setAttribute("aria-label", label + ": " + values[code]);
+      // addEventListener rather than an inline handler: the values come from
+      // puzzle data, and templating them into markup would be an injection sink.
+      b.addEventListener("click", () => {
+        vectorPick[key] = code;
+        renderMetricPicker();
+        renderVectorPreview();
+      });
+      opts.appendChild(b);
+    }
+    row.appendChild(opts);
+    wrap.appendChild(row);
+  }
+}
+
+function renderVectorPreview() {
+  $("vector-preview").textContent = vectorString(vectorPick);
+  const s = scoreVector(vectorPick);
+  $("vector-score").textContent = s.toFixed(1);
+  const left = VECTOR_TRIES - vectorTries.length;
+  $("vector-tries").textContent =
+    left + (left === 1 ? " try left" : " tries left") +
+    " \u00b7 green means that metric is correct";
+}
+
+function renderVectorTries() {
+  const wrap = $("guesses");
+  wrap.innerHTML = "";
+  for (const t of vectorTries) {
+    const row = document.createElement("div");
+    row.className = "vtry";
+    for (const k of HINT_ORDER) {
+      const cell = document.createElement("span");
+      cell.className = "vcell " + (t.correct[k] ? "hit" : "miss");
+      cell.textContent = k + ":" + t.pick[k];
+      row.appendChild(cell);
+    }
+    const sc = document.createElement("span");
+    sc.className = "vtry-score";
+    sc.textContent = t.score.toFixed(1);
+    row.appendChild(sc);
+    wrap.appendChild(row);
+  }
+}
+
+function submitVector() {
+  if (finished) return;
+  const answer = parseVector();
+  const correct = vectorMatches(vectorPick, answer);
+  const score = scoreVector(vectorPick);
+  vectorTries.push({ pick: { ...vectorPick }, correct, score });
+
+  if (vectorSolved(correct)) { finished = true; won = true; }
+  else if (vectorTries.length >= VECTOR_TRIES) { finished = true; won = false; }
+
+  renderVectorTries();
+  renderVectorPreview();
+  if (finished) {
+    if (!practiceMode) { recordStats(); persist(); }
+    renderResult();
+  } else if (!practiceMode) {
+    persist();
+  }
+}
+
+/* How many of the eight metrics the player's best attempt got right. Used for
+   the share grid and the result line, so progress is visible even on a loss. */
+function vectorBest() {
+  if (!vectorTries.length) return 0;
+  return Math.max(...vectorTries.map((t) =>
+    HINT_ORDER.filter((k) => t.correct[k]).length));
+}
 
 /* Practice is capped per day. Unlimited practice makes the daily puzzle feel
    incidental, which is the opposite of what a daily game needs. */
@@ -1580,14 +1938,16 @@ function startPractice() {
   }
   puzzle = next;
   guesses = []; finished = false; won = false;
+  resetVector();
   clearTimeout(countdownTimer);
   $("result").hidden = true;
-  $("play-area").hidden = false;
   const box = $("share-fallback");
   if (box) box.remove();
   $("guess").value = "";
-  renderPuzzle(); renderGuesses(); renderHints();
-  $("guess").focus();
+  renderPuzzle(); renderHints();
+  if (vectorMode()) { renderMetricPicker(); renderVectorPreview(); renderVectorTries(); }
+  else { renderGuesses(); $("guess").focus(); }
+  applyMode();
   document.getElementById("dlg-stats").close();
   toast("New practice vulnerability");
   const left = PRACTICE_LIMIT - practiceUsed();
@@ -1600,18 +1960,42 @@ function startPractice() {
   if (pbtn) pbtn.disabled = left <= 0;
 }
 
+/* Show whichever play area the current mode needs, and hide the other. */
+function applyMode() {
+  const v = vectorMode();
+  $("play-area").hidden = v || finished;
+  $("vector-area").hidden = !v || finished;
+  $("mode-score").setAttribute("aria-pressed", String(!v));
+  $("mode-vector").setAttribute("aria-pressed", String(v));
+  $("mode-note").textContent = v
+    ? "Pick all eight metrics. The score is derived \u2014 4 tries."
+    : "Guess the base score \u2014 6 tries, one metric revealed per miss.";
+}
+
 function startDaily() {
   practiceMode = false;
   puzzle = DAILY.puzzle;
   guesses = []; finished = false; won = false;
+  resetVector();
   const resumed = restore();
-  renderPuzzle(); renderGuesses(); renderHints();
+  renderPuzzle(); renderHints();
+  if (vectorMode()) { renderMetricPicker(); renderVectorPreview(); renderVectorTries(); }
+  else renderGuesses();
   if (resumed && finished) renderResult();
-  else { $("result").hidden = true; $("play-area").hidden = false; }
+  else { $("result").hidden = true; }
+  applyMode();
 }
 
 /* ---------- wiring ---------- */
 $("btn-guess").onclick = submitGuess;
+$("btn-submit-vector").onclick = submitVector;
+function switchMode(toVector) {
+  if (vectorMode() === toVector) return;
+  setVectorMode(toVector);
+  if (practiceMode) startPractice(); else startDaily();
+}
+$("mode-score").onclick = () => switchMode(false);
+$("mode-vector").onclick = () => switchMode(true);
 $("guess").addEventListener("keydown", (e) => { if (e.key === "Enter") submitGuess(); });
 $("btn-help").onclick = () => $("dlg-help").showModal();
 $("btn-stats").onclick = () => { renderStats(); $("dlg-stats").showModal(); };

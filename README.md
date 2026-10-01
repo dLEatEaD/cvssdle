@@ -49,6 +49,27 @@ quietly drills CVSS fluency.
 No backend, no accounts, no tracking. `index.html` is a single self-contained
 file — no external requests at runtime.
 
+## Two modes
+
+**Guess the score** (default) — six tries at the base score, one vector metric
+revealed per miss.
+
+**Build the vector** — pick all eight metrics in four tries; the game derives
+the score from your selection and tells you which metrics are right.
+
+Vector mode exists because score mode is solvable without knowing any CVSS. The
+answer carries only ~3.4 bits of entropy: 9.8 alone wins 36% of the time, and a
+plain binary search over the observed scores wins **100%** of the time in about
+five guesses. Someone who memorises six numbers beats someone who understands
+the rubric.
+
+Building the vector has 2,592 combinations and no shortcut — you have to read
+the advisory. The in-game calculator implements CVSS v3.1 §7.1 directly and is
+held to NVD's published score for every puzzle in the pool by `check_cvss.py`.
+
+Mode is opt-in and remembered per browser. The two modes keep separate saved
+boards, so switching does not destroy a game in progress.
+
 ## How the answers stay hidden
 
 A static site has to hand the browser today's score to give higher/lower
@@ -86,6 +107,8 @@ did by shipping all 400 puzzles and selecting one client-side. Instead:
 | `check_playable.py` | CI gate: plays a round and asserts the core loop works. |
 | `check_streaks.py` | CI gate: streaks must survive weekends. |
 | `check_social.py` | CI gate: partial credit and challenge links. |
+| `check_cvss.py` | CI gate: the in-game CVSS calculator must match NVD. |
+| `check_vector.py` | CI gate: vector mode stays opt-in and never leaks the answer. |
 | `check_workflows.py` | CI gate: workflow steps must pass the secrets their scripts need. |
 | `check_schedule.py` | CI gate: cron, countdown and EPOCH must agree. |
 | `build_quips.py` | Source of the 210 end-of-game quips. |

@@ -11,6 +11,7 @@ Run after build_site.py, with PUZZLE_KEY available.
 
 import base64
 import json
+import re
 import os
 import sys
 from datetime import date
@@ -60,7 +61,12 @@ def main() -> None:
     if today["id"] not in built:
         sys.exit("FAIL: today's puzzle is missing from the build")
 
-    scores = built.count('"score"')
+    # Count score fields inside the inlined data blocks, not anywhere in the
+    # file: the game's own source legitimately contains the word "score".
+    blocks = re.findall(r"const (?:DAILY|PRACTICE) = (.+?);\n", built, re.S)
+    if len(blocks) != 2:
+        sys.exit(f"FAIL: expected 2 data blocks in the page, found {len(blocks)}")
+    scores = sum(b.count('"score":') for b in blocks)
     if scores != len(practice) + 1:
         sys.exit(f"FAIL: expected {len(practice) + 1} scores, found {scores}")
 

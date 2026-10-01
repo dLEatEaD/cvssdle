@@ -60,3 +60,9 @@ jobs:
 
       - name: Verify partial credit and challenge links
         run: python3 check_social.py
+
+      - name: Verify the CVSS calculator matches NVD
+        run: python3 check_cvss.py
+
+      - name: Verify vector mode
+        run: python3 check_vector.py

@@ -11,6 +11,7 @@ Usage:
 """
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -97,8 +98,14 @@ def main() -> None:
             f"refusing to ship: expected 2 script blocks, found {built.count('</script>')}"
         )
 
-    # The whole point of this pipeline: exactly one daily answer in the artifact.
-    answers = built.count('"score"')
+    # The whole point of this pipeline: exactly one daily answer in the
+    # artifact. Count score fields inside the inlined data blocks rather than
+    # anywhere in the file - the game's own source legitimately contains the
+    # word "score", and a raw text count conflates the two.
+    blocks = re.findall(r"const (?:DAILY|PRACTICE) = (.+?);\n", built, re.S)
+    if len(blocks) != 2:
+        sys.exit(f"refusing to ship: expected 2 data blocks, found {len(blocks)}")
+    answers = sum(b.count('"score":') for b in blocks)
     expected = len(practice) + 1
     if answers != expected:
         sys.exit(f"refusing to ship: expected {expected} scores, found {answers}")
