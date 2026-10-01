@@ -52,6 +52,17 @@ def is_operating_system(vendor: str, product: str) -> bool:
         return True
     return False
 
+
+# Vendors excluded by choice rather than because of the OS rule above.
+# Microsoft is dropped entirely: even after removing Windows it was the largest
+# single vendor in the pool (165 of 915), and the remainder is heavily weighted
+# towards long-dead Internet Explorer and Office bugs.
+#
+# This matches on the KEV vendorProject field only, so a third-party product
+# that merely runs on Windows - for example Citrix Workspace for Windows - is
+# still eligible. Those are not Microsoft vulnerabilities.
+EXCLUDED_VENDORS = {"Microsoft"}
+
 # Only keep vulns from vendors a security team will actually recognize.
 KNOWN_VENDORS = {
     "Microsoft", "Apache", "Cisco", "Citrix", "Fortinet", "VMware", "Oracle",
@@ -147,6 +158,8 @@ def main() -> None:
         cvss = primary["cvssData"]
         meta = kev_meta.get(cid)
         if not meta or meta["vendorProject"] not in KNOWN_VENDORS:
+            continue
+        if meta["vendorProject"] in EXCLUDED_VENDORS:
             continue
         if is_operating_system(meta["vendorProject"], meta["product"]):
             continue

@@ -73,18 +73,25 @@ def cycle_order(n: int, seed: bytes, cycle: int) -> list[int]:
 def pick(pool: list, day: date, seed: bytes) -> dict:
     """Day N takes position N in the stored pool order.
 
-    split_pool.py already stores the daily pool in play order and preserves
-    that order across refreshes, so reading it positionally keeps a given day
-    pointing at the same CVE even as new puzzles are appended.
+    split_pool.py stores the daily pool in play order and preserves that order
+    across refreshes, so reading it positionally keeps a given day pointing at
+    the same CVE even as new puzzles are appended.
 
-    Later cycles reshuffle, so the second pass through the pool is not a replay
-    of the first.
+    Positions tagged "retired" are spent slots held open purely to stop the
+    schedule shifting - the puzzle has since been filtered out of the source.
+    They are only ever reachable in the first cycle, where they are in the
+    past, so later cycles reshuffle over the eligible entries alone.
     """
     n = len(pool)
     cycle, offset = divmod((day - EPOCH).days, n)
     if cycle == 0:
         return pool[offset]
-    return pool[cycle_order(n, seed, cycle)[offset]]
+
+    live = [i for i, p in enumerate(pool) if not p.get("retired")]
+    if not live:
+        sys.exit("daily pool has no eligible puzzles left")
+    order = cycle_order(len(live), seed, cycle)
+    return pool[live[order[offset % len(live)]]]
 
 
 def main() -> None:

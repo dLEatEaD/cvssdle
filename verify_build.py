@@ -13,11 +13,16 @@ import base64
 import json
 import os
 import sys
+from datetime import date
 from pathlib import Path
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 HERE = Path(__file__).parent
+
+# Imported rather than restated, so the gate cannot drift from the filter.
+from build_puzzles import EXCLUDED_VENDORS  # noqa: E402
+from pick_daily import EPOCH  # noqa: E402
 
 
 def main() -> None:
@@ -59,8 +64,27 @@ def main() -> None:
     if scores != len(practice) + 1:
         sys.exit(f"FAIL: expected {len(practice) + 1} scores, found {scores}")
 
+    # Excluded vendors must not reach the published page by any route - not as
+    # today's puzzle, not in the practice pool, and not via a stale pool file.
+    offenders = sorted(
+        {p["vendor"] for p in practice + [today] if p["vendor"] in EXCLUDED_VENDORS}
+    )
+    if offenders:
+        sys.exit(f"FAIL: excluded vendors published: {offenders}")
+
+    # Retired slots hold the schedule open for days already played; they must
+    # never sit in the future, where they would be served as a live puzzle.
+    spent = (date.today() - EPOCH).days + 1
+    future_retired = [
+        p["id"] for p in pool[spent:] if p.get("retired")
+    ]
+    if future_retired:
+        sys.exit(f"FAIL: {len(future_retired)} retired puzzles are scheduled ahead")
+
+    retired = sum(1 for p in pool if p.get("retired"))
     print(f"OK: 1 daily answer + {len(practice)} practice puzzles published; "
-          f"{len(pool) - 1} future answers withheld")
+          f"{len(pool) - 1} future answers withheld"
+          + (f"; {retired} retired slots, all in the past" if retired else ""))
 
 
 if __name__ == "__main__":

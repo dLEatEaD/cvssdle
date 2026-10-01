@@ -19,6 +19,11 @@ quietly drills CVSS fluency.
 - Desktop, mobile and server OS bugs are excluded. They dominate KEV and the
   records are repetitive. Network and security appliance firmware that happens
   to be named an OS (Cisco IOS, PAN-OS, FortiOS, Junos) is deliberately kept.
+- Microsoft is excluded entirely. Even after dropping Windows it was the
+  largest single vendor, and the rest skewed heavily to long-dead Internet
+  Explorer and Office bugs. Third-party products that merely run on Windows
+  (e.g. Citrix Workspace for Windows) still qualify — those aren't Microsoft
+  vulnerabilities.
 - Feedback per guess: higher/lower plus a proximity band (exact / hot ≤0.5 /
   warm ≤1.5 / cold).
 - Streaks, win rate, and guess distribution are kept in `localStorage`.

@@ -20,6 +20,7 @@ import hmac
 import json
 import os
 import sys
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -28,6 +29,9 @@ HERE = Path(__file__).parent
 SOURCE = HERE / "puzzles.json"
 PRACTICE_OUT = HERE / "puzzles.practice.json"
 DAILY_OUT = HERE / "puzzles.daily.enc"
+
+# Day zero of the schedule. Must match EPOCH in pick_daily.py.
+EPOCH = date(2026, 1, 1)
 
 
 def load_key() -> bytes:
@@ -56,7 +60,9 @@ def decrypt(blob: bytes, key: bytes) -> bytes:
     return AESGCM(key).decrypt(blob[:12], blob[12:], None)
 
 
-def partition(puzzles: list, practice_n: int) -> tuple[list, list]:
+def partition(puzzles: list, practice_n: int, reserved: set | None = None,
+              prior_practice: set | None = None, prior_daily: set | None = None
+              ) -> tuple[list, list]:
     """Split into practice and daily pools, keeping related CVEs together.
 
     Vendors often file several CVEs from one advisory with near-identical
@@ -64,21 +70,39 @@ def partition(puzzles: list, practice_n: int) -> tuple[list, list]:
     two pools, playing the practice one telegraphs the daily. So group by
     description prefix first and assign whole groups.
 
-    puzzles.json is already interleaved across score bands by build_puzzles.py,
-    so walking groups in order preserves that spread in both halves.
+    Assignment is sticky. A group that already has a side keeps it, and only
+    brand-new groups are assigned fresh. Without this the split depends on
+    position in puzzles.json, which shifts every time the source is refreshed,
+    which in turn churns the daily pool and re-dates the whole schedule.
+
+    `reserved` holds CVE ids whose schedule positions are already spent; their
+    groups are forced to the daily side regardless of anything else.
     """
     if practice_n >= len(puzzles):
         sys.exit("practice pool must be smaller than the full pool")
+    reserved = reserved or set()
+    prior_practice = prior_practice or set()
+    prior_daily = prior_daily or set()
 
     groups: dict[str, list] = {}
     for p in puzzles:
         groups.setdefault(p["desc"][:60], []).append(p)
 
-    practice, daily = [], []
-    # Take every Nth group for practice so the score spread survives grouping.
-    stride = max(1, round(len(groups) / practice_n))
-    for i, members in enumerate(groups.values()):
-        if i % stride == 0 and len(practice) + len(members) <= practice_n:
+    practice, daily, unassigned = [], [], []
+    for members in groups.values():
+        ids = {p["id"] for p in members}
+        if ids & reserved or ids & prior_daily:
+            daily.extend(members)
+        elif ids & prior_practice:
+            practice.extend(members)
+        else:
+            unassigned.append(members)
+
+    # Top practice up towards the target with new groups; the rest are dailies.
+    stride = max(1, round(len(unassigned) / max(1, practice_n - len(practice)))) \
+        if len(practice) < practice_n else 0
+    for i, members in enumerate(unassigned):
+        if stride and i % stride == 0 and len(practice) + len(members) <= practice_n:
             practice.extend(members)
         else:
             daily.extend(members)
@@ -108,46 +132,73 @@ def shuffled(items: list, seed: bytes, label: str) -> list:
     return out
 
 
-def existing_order(key: bytes) -> list[str]:
-    """CVE ids of the current daily pool, in play order. Empty if none."""
+def existing_pool(key: bytes) -> list:
+    """The current daily pool, in play order. Empty if there isn't one."""
     if not DAILY_OUT.exists():
         return []
     try:
-        blob = DAILY_OUT.read_bytes()
-        pool = json.loads(decrypt(blob, key))
-        return [p["id"] for p in pool]
+        return json.loads(decrypt(DAILY_OUT.read_bytes(), key))
     except Exception:
         return []
 
 
-def daily_order(daily: list, key: bytes, seed: bytes, rebuild: bool) -> list:
+def elapsed_positions(today: date) -> int:
+    """How many schedule positions are already spoken for, including today."""
+    return max(0, (today - EPOCH).days + 1)
+
+
+def daily_order(daily: list, key: bytes, seed: bytes, rebuild: bool,
+                today: date) -> list:
     """Put the daily pool into play order, stable across refreshes.
 
-    pick_daily.py reads this pool positionally, so preserving the order of
-    puzzles that are already scheduled keeps day numbers pointing at the same
-    CVE. New arrivals are appended after them. Without this, adding a single
-    puzzle reshuffles every day in the calendar and anyone mid-game sees their
-    guesses replayed against a different answer.
+    pick_daily.py reads this pool positionally, so the order has to be treated
+    as a schedule rather than a list. Two rules keep it stable:
 
-    Pass rebuild=True when the filters change and the old schedule should be
-    discarded outright.
+    1. Positions up to and including today are frozen verbatim. They are spent
+       - already played, or in play right now - and their content no longer
+       matters, but their *count* does: dropping one shifts every later day by
+       a position. Entries that have since been filtered out of the source are
+       therefore kept here anyway, tagged "retired" so later cycles skip them.
+
+    2. Future positions keep their prior relative order, minus anything the
+       filters now exclude, with new arrivals appended.
+
+    Without rule 1, excluding a vendor mid-schedule silently re-dates every
+    remaining puzzle and anyone mid-game has their guesses replayed against a
+    different answer.
+
+    Pass rebuild=True to discard the schedule and reshuffle from scratch.
     """
     if rebuild:
         return shuffled(daily, seed, "daily")
 
-    prior = existing_order(key)
+    prior = existing_pool(key)
     if not prior:
         return shuffled(daily, seed, "daily")
 
-    by_id = {p["id"]: p for p in daily}
-    kept = [by_id.pop(pid) for pid in prior if pid in by_id]
-    # Anything left is new since the last refresh; it extends the schedule.
-    fresh = shuffled(list(by_id.values()), seed, f"append{len(kept)}")
-    dropped = len(prior) - len(kept)
-    if dropped:
-        print(f"note: {dropped} puzzles left the source pool", file=sys.stderr)
-    print(f"schedule: {len(kept)} positions preserved, {len(fresh)} appended")
-    return kept + fresh
+    current = {p["id"]: p for p in daily}
+    freeze_n = min(len(prior), elapsed_positions(today))
+
+    frozen = []
+    for p in prior[:freeze_n]:
+        if p["id"] in current:
+            frozen.append(current[p["id"]])      # refresh the record in place
+        else:
+            frozen.append({**p, "retired": True})  # keep the slot, retire it
+
+    # Rebuild the future from what is still eligible.
+    frozen_ids = {p["id"] for p in frozen}
+    remaining = {p["id"]: p for p in daily if p["id"] not in frozen_ids}
+    tail = [remaining.pop(p["id"]) for p in prior[freeze_n:] if p["id"] in remaining]
+    fresh = shuffled(list(remaining.values()), seed, f"append{len(frozen) + len(tail)}")
+
+    retired = sum(1 for p in frozen if p.get("retired"))
+    removed = len(prior) - freeze_n - len(tail)
+    print(f"schedule: {freeze_n} positions frozen through {today}"
+          + (f" ({retired} retired)" if retired else ""))
+    print(f"          {len(tail)} future positions preserved, "
+          f"{removed} removed, {len(fresh)} appended")
+    return frozen + tail + fresh
 
 
 def main() -> None:
@@ -158,6 +209,7 @@ def main() -> None:
                     help="discard the existing schedule and reshuffle from scratch")
     ap.add_argument("--new-key", action="store_true",
                     help="print a fresh base64 key and exit")
+    ap.add_argument("--date", help="override today's date (YYYY-MM-DD), for testing")
     args = ap.parse_args()
 
     if args.new_key:
@@ -169,9 +221,28 @@ def main() -> None:
     if not seed:
         sys.exit("PUZZLE_SEED is not set")
 
+    today = (
+        datetime.strptime(args.date, "%Y-%m-%d").date()
+        if args.date
+        else datetime.now(timezone.utc).date()
+    )
+
     puzzles = json.loads(SOURCE.read_text())
-    practice, daily = partition(puzzles, args.practice)
-    daily = daily_order(daily, key, seed, args.rebuild)
+
+    # Positions already spent are locked to the daily side: moving one into
+    # practice would shift the schedule and hand out a past answer as practice.
+    # Pool membership is otherwise sticky, so a refresh only places new CVEs.
+    reserved, prior_practice, prior_daily = set(), set(), set()
+    if not args.rebuild:
+        prior = existing_pool(key)
+        reserved = {p["id"] for p in prior[:elapsed_positions(today)]}
+        prior_daily = {p["id"] for p in prior}
+        if PRACTICE_OUT.exists():
+            prior_practice = {p["id"] for p in json.loads(PRACTICE_OUT.read_text())}
+
+    practice, daily = partition(puzzles, args.practice, reserved,
+                                prior_practice, prior_daily)
+    daily = daily_order(daily, key, seed, args.rebuild, today)
 
     overlap = {p["id"] for p in practice} & {p["id"] for p in daily}
     assert not overlap, f"pools overlap: {overlap}"
