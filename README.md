@@ -27,6 +27,10 @@ quietly drills CVSS fluency.
 - Feedback per guess: higher/lower plus a proximity band (exact / hot ≤0.5 /
   warm ≤1.5 / cold).
 - Streaks, win rate, and guess distribution are kept in `localStorage`.
+- Streaks are measured in missed **weekdays**, not calendar days, because
+  this is played at work: Friday to Monday is a three-day gap but zero
+  missed weekdays, so it continues the streak. Weekend play counts and
+  never hurts, it just isn't required.
 - Shareable emoji result grid, Wordle-style.
 - 210 end-of-game quips: only a first-guess win earns "Nailed it", and each
   of the other outcomes has 30 of its own.
@@ -73,6 +77,8 @@ did by shipping all 400 puzzles and selecting one client-side. Instead:
 | `verify_build.py` | CI gate: proves no future answers reached the build. |
 | `check_compat.py` | CI gate: saved games from the live site must still load. |
 | `check_playable.py` | CI gate: plays a round and asserts the core loop works. |
+| `check_streaks.py` | CI gate: streaks must survive weekends. |
+| `check_workflows.py` | CI gate: workflow steps must pass the secrets their scripts need. |
 | `check_schedule.py` | CI gate: cron, countdown and EPOCH must agree. |
 | `build_quips.py` | Source of the 210 end-of-game quips. |
 | `play.sh` | Serve locally and open a browser. |

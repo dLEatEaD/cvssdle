@@ -54,3 +54,6 @@ jobs:
 
       - name: Verify the game is playable
         run: python3 check_playable.py
+
+      - name: Verify streaks survive weekends
+        run: python3 check_streaks.py
