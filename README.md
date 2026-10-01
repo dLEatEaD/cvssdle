@@ -92,6 +92,12 @@ workflow warns and production ships anyway. Production is always built from
 `main` regardless of which branch triggered the run, so pushing to `preview`
 cannot publish preview code to the live URL.
 
+The `github-pages` environment is restricted to `main`, so a push to `preview`
+runs the tests but cannot deploy. The preview site is rebuilt from the
+`preview` branch on every publish run, so it refreshes on the next push to
+`main`, the next scheduled run, or an on-demand run from the Actions tab
+(Actions → Publish daily puzzle → Run workflow).
+
 Work lands on `preview` first:
 
 ```bash

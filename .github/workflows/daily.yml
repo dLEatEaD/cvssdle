@@ -16,7 +16,12 @@ on:
     - cron: "5 5 * * *"
   workflow_dispatch:
   push:
-    branches: [main, preview]
+    # Only main deploys. The github-pages environment is restricted to main,
+    # which is the correct safety rail - a push to preview must not be able to
+    # publish. Preview content is still rebuilt on every run below, from the
+    # preview branch, so it refreshes on the next main push, the next scheduled
+    # run, or an on-demand run from the Actions tab.
+    branches: [main]
     # Rebuild when the game itself changes, not on docs-only edits.
     paths:
       - "game.template.html"
@@ -31,9 +36,7 @@ permissions:
   pages: write
   id-token: write
 
-# Pages allows one deployment at a time. Two runs reaching deploy together -
-# easy to trigger, since pushes to main and preview both publish - makes one
-# fail on a lock it cannot take. Superseding the queued run is correct here:
+# Pages allows one deployment at a time. Superseding a queued run is safe here:
 # every run rebuilds from scratch, so the newest produces the same or fresher
 # output, and a cancelled run never leaves the site half-published.
 concurrency:
