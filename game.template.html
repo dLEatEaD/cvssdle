@@ -385,6 +385,35 @@ dialog b { color: var(--cp-text); }
   box-shadow: 0 0 12px rgba(13, 162, 231, 0.3);
 }
 .dist-bar.dim { background: var(--cp-surface-soft); color: var(--cp-text-muted); box-shadow: none; }
+.rank-card {
+  border: 1px solid var(--cp-border); border-radius: 10px;
+  background: var(--cp-accent-soft); padding: 10px 14px; margin-bottom: 12px;
+}
+.rank-name {
+  font-size: 1.05rem; font-weight: 700; color: var(--cp-accent);
+  letter-spacing: -0.01em;
+}
+.rank-next {
+  font-size: 0.7rem; color: var(--cp-text-muted); margin-top: 2px;
+  text-transform: uppercase; letter-spacing: .08em; font-weight: 600;
+}
+.trend, .freeze {
+  font-size: 0.8rem; color: var(--cp-text-muted);
+  padding: 8px 11px; border-radius: 8px; margin-bottom: 8px;
+  background: var(--cp-surface-soft); border: 1px solid var(--cp-border);
+}
+.trend b, .freeze b {
+  font-family: Consolas, "Courier New", Courier, monospace;
+  color: var(--cp-text);
+}
+.trend-improving { color: var(--cp-success); font-weight: 700; }
+.trend-slipping  { color: var(--cp-warning); font-weight: 700; }
+.trend-steady    { color: var(--cp-text-soft); font-weight: 700; }
+.teaser {
+  font-size: 0.68rem; color: var(--cp-text-muted); margin-top: 8px;
+  text-transform: uppercase; letter-spacing: .09em; font-weight: 600;
+}
+.teaser b { color: var(--cp-accent); letter-spacing: .02em; }
 footer {
   max-width: 620px; width: 100%; margin-top: 8px;
   font-size: 0.72rem; color: var(--cp-text-muted); text-align: center;
@@ -479,12 +508,18 @@ footer a:hover { text-decoration: underline; }
 
 <dialog id="dlg-stats">
   <h2>Statistics</h2>
+  <div class="rank-card">
+    <div class="rank-name" id="rank-name">Triage Trainee</div>
+    <div class="rank-next" id="rank-next"></div>
+  </div>
   <div class="stats-grid">
     <div class="stat"><b id="s-played">0</b><span>Played</span></div>
     <div class="stat"><b id="s-win">0</b><span>Win %</span></div>
     <div class="stat"><b id="s-streak">0</b><span>Streak</span></div>
     <div class="stat"><b id="s-max">0</b><span>Max</span></div>
   </div>
+  <div class="trend" id="trend"></div>
+  <div class="freeze" id="freeze"></div>
   <h2 style="font-size:.95rem">Guess distribution</h2>
   <div id="dist"></div>
   <div class="btn-row">
@@ -1042,7 +1077,8 @@ function renderResult() {
       '<button class="primary" id="btn-share">Share result</button>' +
       '<button class="ghost" id="btn-another">Practice again</button>' +
     "</div>" +
-    (practiceMode ? "" : '<div class="countdown" id="countdown"></div>');
+    (practiceMode ? "" : '<div class="countdown" id="countdown"></div>'
+      + (DAILY.next ? '<div class="teaser">Tomorrow: <b id="teaser-vendor"></b></div>' : ""));
 
   // Assign puzzle-derived values as text/properties rather than splicing them
   // into an HTML string, so upstream data can never introduce markup or a
@@ -1052,6 +1088,11 @@ function renderResult() {
   const link = $("answer-link");
   link.href = /^https:\/\/nvd\.nist\.gov\//.test(puzzle.url) ? puzzle.url : "#";
   link.textContent = puzzle.id + " on NVD \u2192";
+
+  // Vendor only, set as text. Never the product, score or vector - the teaser
+  // is there to create anticipation, not to leak tomorrow's answer.
+  const teaser = $("teaser-vendor");
+  if (teaser) teaser.textContent = DAILY.next;
 
   $("btn-share").onclick = async () => {
     const text = shareText();
@@ -1175,41 +1216,150 @@ function restore() {
   return true;
 }
 
+/* ---------- progression ---------- */
+
+/* Titles are earned on games played, not win rate: they should reward showing
+   up, which is what a daily habit needs, rather than punishing hard puzzles. */
+const RANKS = [
+  { at: 0,   name: "Triage Trainee" },
+  { at: 5,   name: "Analyst" },
+  { at: 15,  name: "Senior Analyst" },
+  { at: 30,  name: "Vulnerability Lead" },
+  { at: 60,  name: "Severity Architect" },
+  { at: 120, name: "CVSS Oracle" },
+];
+
+function rankFor(played) {
+  let r = RANKS[0];
+  for (const x of RANKS) if (played >= x.at) r = x;
+  return r;
+}
+
+function nextRank(played) {
+  return RANKS.find((x) => played < x.at) || null;
+}
+
 function blankStats() {
   return { played: 0, wins: 0, streak: 0, max: 0, dist: [0, 0, 0, 0, 0, 0],
-           lastDay: null, lastId: null };
+           lastDay: null, lastId: null,
+           // Rolling log of recent results, newest last. Powers the accuracy
+           // trend; capped so storage cannot grow without bound.
+           history: [],
+           // One missed day a month is forgiven rather than resetting the
+           // streak. Losing a long streak to a day off is the single most
+           // common reason people abandon a daily game.
+           freezeUsedOn: null };
+}
+
+/* Older saves predate these fields. Fill them in rather than discarding, so
+   nobody loses a streak to an upgrade. */
+function normaliseStats(s) {
+  if (!Array.isArray(s.dist) || s.dist.length !== MAX_GUESSES) {
+    s.dist = [0, 0, 0, 0, 0, 0];
+  }
+  if (!Array.isArray(s.history)) s.history = [];
+  if (!("freezeUsedOn" in s)) s.freezeUsedOn = null;
+  if (typeof s.played !== "number") s.played = 0;
+  if (typeof s.wins !== "number") s.wins = 0;
+  if (typeof s.streak !== "number") s.streak = 0;
+  if (typeof s.max !== "number") s.max = 0;
+  return s;
+}
+
+const FREEZE_COOLDOWN_DAYS = 30;
+
+function freezeAvailable(s, day) {
+  return s.freezeUsedOn === null || day - s.freezeUsedOn >= FREEZE_COOLDOWN_DAYS;
 }
 
 function recordStats() {
-  const s = load(KEY_STATS, blankStats());
+  const s = normaliseStats(load(KEY_STATS, blankStats()));
   const day = DAILY.number;
   // Also key on the CVE id: if a pool refresh remapped this day to a different
   // puzzle, the earlier result was recorded against a different question and
   // this genuinely is a new one.
   if (s.lastDay === day && s.lastId === DAILY.puzzle.id) return;
-  if (!Array.isArray(s.dist) || s.dist.length !== MAX_GUESSES) {
-    s.dist = [0, 0, 0, 0, 0, 0];
-  }
+
+  const gap = s.lastDay === null ? null : day - s.lastDay;
+  let froze = false;
+
   s.played++;
   if (won) {
     s.wins++;
-    s.streak = s.lastDay === day - 1 ? s.streak + 1 : 1;
+    if (gap === 1 || gap === null) {
+      s.streak = (s.streak || 0) + 1;
+    } else if (gap === 2 && freezeAvailable(s, day)) {
+      // Exactly one missed day, and a freeze is available: bridge the gap.
+      s.streak = (s.streak || 0) + 1;
+      s.freezeUsedOn = day;
+      froze = true;
+    } else {
+      s.streak = 1;
+    }
     s.max = Math.max(s.max, s.streak);
     s.dist[guesses.length - 1]++;
   } else {
     s.streak = 0;
   }
+
+  // Closest guess, so improvement is visible even on a loss.
+  const best = guesses.length
+    ? Math.min(...guesses.map((g) => Math.abs(g - puzzle.score)))
+    : null;
+  s.history.push({ d: day, w: won, n: guesses.length, m: best });
+  if (s.history.length > 60) s.history = s.history.slice(-60);
+
   s.lastDay = day;
   s.lastId = DAILY.puzzle.id;
   save(KEY_STATS, s);
+  if (froze) toast("\u2744\ufe0f Streak freeze used \u2014 streak saved");
+}
+
+/* Mean distance from the answer, older half vs newer half. Win rate hides
+   improvement; this shows it. */
+function accuracyTrend(history) {
+  const scored = history.filter((h) => typeof h.m === "number");
+  if (scored.length < 6) return null;
+  const half = Math.floor(scored.length / 2);
+  const avg = (a) => a.reduce((t, h) => t + h.m, 0) / a.length;
+  return { then: avg(scored.slice(0, half)), now: avg(scored.slice(half)),
+           n: scored.length };
 }
 
 function renderStats() {
-  const s = load(KEY_STATS, blankStats());
+  const s = normaliseStats(load(KEY_STATS, blankStats()));
   $("s-played").textContent = s.played;
   $("s-win").textContent = s.played ? Math.round((s.wins / s.played) * 100) : 0;
   $("s-streak").textContent = s.streak;
   $("s-max").textContent = s.max;
+
+  const rank = rankFor(s.played);
+  const next = nextRank(s.played);
+  $("rank-name").textContent = rank.name;
+  $("rank-next").textContent = next
+    ? `${next.at - s.played} more to ${next.name}`
+    : "Top rank reached";
+
+  const trend = accuracyTrend(s.history);
+  const el = $("trend");
+  if (!trend) {
+    el.textContent = "Play a few more to see your accuracy trend.";
+  } else {
+    const delta = trend.then - trend.now;
+    const dir = delta > 0.05 ? "improving" : delta < -0.05 ? "slipping" : "steady";
+    el.innerHTML = "Average miss <b>" + trend.then.toFixed(1) + "</b> \u2192 <b>" +
+      trend.now.toFixed(1) + "</b> over your last " + trend.n +
+      ' games \u00b7 <span class="trend-' + dir + '">' + dir + "</span>";
+  }
+
+  const freeze = $("freeze");
+  if (freezeAvailable(s, DAILY.number)) {
+    freeze.innerHTML = "\u2744\ufe0f Streak freeze <b>ready</b> \u2014 one missed day will be forgiven";
+  } else {
+    const back = FREEZE_COOLDOWN_DAYS - (DAILY.number - s.freezeUsedOn);
+    freeze.innerHTML = "\u2744\ufe0f Streak freeze recharges in <b>" + back + "</b> days";
+  }
+
   const peak = Math.max(1, ...s.dist);
   $("dist").innerHTML = s.dist.map((n, i) => {
     const isLast = !practiceMode && finished && won && guesses.length === i + 1;
@@ -1219,7 +1369,26 @@ function renderStats() {
   }).join("");
 }
 
+const PRACTICE_LIMIT = 3;
+const KEY_PRACTICE = "cvssdle.practice.v1";
+
+/* Practice is capped per day. Unlimited practice makes the daily puzzle feel
+   incidental, which is the opposite of what a daily game needs. */
+function practiceUsed() {
+  const p = load(KEY_PRACTICE, null);
+  return p && p.day === DAILY.number ? (p.n || 0) : 0;
+}
+
 function startPractice() {
+  const used = practiceUsed();
+  if (used >= PRACTICE_LIMIT) {
+    toast("Practice limit reached \u2014 back tomorrow");
+    const btn = $("btn-another");
+    if (btn) btn.disabled = true;
+    return;
+  }
+  save(KEY_PRACTICE, { day: DAILY.number, n: used + 1 });
+
   practiceMode = true;
   // Avoid handing out the same puzzle twice in a row.
   let next = puzzle;
@@ -1238,6 +1407,14 @@ function startPractice() {
   $("guess").focus();
   document.getElementById("dlg-stats").close();
   toast("New practice vulnerability");
+  const left = PRACTICE_LIMIT - practiceUsed();
+  const btn = $("btn-another");
+  if (btn) {
+    btn.disabled = left <= 0;
+    btn.textContent = left > 0 ? `Practice again (${left} left)` : "No practice left";
+  }
+  const pbtn = $("btn-practice");
+  if (pbtn) pbtn.disabled = left <= 0;
 }
 
 function startDaily() {

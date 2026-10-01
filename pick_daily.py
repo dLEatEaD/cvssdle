@@ -18,7 +18,7 @@ import hmac
 import json
 import os
 import sys
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -113,8 +113,13 @@ def main() -> None:
     puzzle = pick(pool, day, seed)
     number = (day - EPOCH).days + 1
 
+    # Tomorrow's VENDOR ONLY, as a teaser. Never the product, score or vector:
+    # a one-word hint creates anticipation, a product name narrows the answer.
+    tomorrow = pick(pool, day + timedelta(days=1), seed)["vendor"]
+
     OUT.write_text(json.dumps({"number": number, "date": day.isoformat(),
-                               "puzzle": puzzle}, separators=(",", ":")))
+                               "puzzle": puzzle, "next": tomorrow},
+                              separators=(",", ":")))
     # Deliberately not printing the score - CI logs are public on a public repo.
     print(f"puzzle #{number} for {day}: {puzzle['vendor']} {puzzle['product']}")
 
