@@ -474,11 +474,27 @@ button.wide { width: 100%; }
   border: 1px solid var(--cp-border); white-space: nowrap;
   background: var(--cp-surface-soft); color: var(--cp-text-muted);
 }
-/* Only the solving attempt is coloured. Colouring individual metrics on a
-   losing attempt is what made the mode solvable without reading anything. */
-.vtry.solved .vcell {
+/* Metric-level colouring appears only once the game is over. During play it is
+   the exploit: keep the greens, cycle the greys, and the vector falls out in
+   three attempts with no CVSS knowledge. After the final reveal the answer is
+   already on screen, so marking each attempt costs nothing and turns the board
+   into a post-mortem - which metric you never got right is the lesson. */
+.vcell.hit {
   background: rgba(34,197,94,.14); border-color: rgba(34,197,94,.45);
   color: var(--cp-success); font-weight: 700;
+}
+.vcell.miss {
+  background: rgba(239,68,68,.10); border-color: rgba(239,68,68,.32);
+  color: var(--cp-danger, #f87171);
+}
+/* The metric you never once got right, called out across every attempt. */
+.vcell.never {
+  border-color: rgba(239,68,68,.75); font-weight: 700;
+}
+.vtry-lesson {
+  font-size: 0.72rem; color: var(--cp-text-muted); margin: 2px 0 10px;
+  padding: 7px 10px; border-radius: 7px;
+  background: rgba(239,68,68,.07); border: 1px solid rgba(239,68,68,.22);
 }
 .vtry-count {
   margin-left: auto; font-size: 0.72rem; font-weight: 700;
@@ -2267,23 +2283,40 @@ function vectorHits(correct) {
   return HINT_ORDER.filter((k) => correct[k]).length;
 }
 
+/* Metrics the player never once got right, across every attempt. Only
+   meaningful after the game ends, where it is the single most useful thing the
+   board can tell them. */
+function vectorNeverRight() {
+  if (!vectorTries.length) return [];
+  return HINT_ORDER.filter((k) => vectorTries.every((t) => !t.correct[k]));
+}
+
 function renderVectorTries() {
   const wrap = $("guesses");
   wrap.innerHTML = "";
+  // Per-metric marking is withheld during play and shown once the game is
+  // decided. While the game is live, telling a player which metrics landed
+  // lets them keep those and cycle the rest, which solves any vector in three
+  // attempts without reading the advisory. Once the answer is on screen that
+  // information is already theirs, and seeing it attempt by attempt is how you
+  // learn what you misread.
+  const review = finished;
+  const never = review ? vectorNeverRight() : [];
   for (const t of vectorTries) {
     const row = document.createElement("div");
     const hits = vectorHits(t.correct);
-    const solved = hits === HINT_ORDER.length;
-    row.className = "vtry" + (solved ? " solved" : "");
+    row.className = "vtry" + (hits === HINT_ORDER.length ? " solved" : "");
     for (const k of HINT_ORDER) {
       const cell = document.createElement("span");
-      // Deliberately uncoloured. Marking each metric right or wrong let a
-      // player lock the greens and cycle the greys, which solves any vector in
-      // three attempts with no CVSS knowledge at all - it was how this mode got
-      // beaten by accident. The player sees what they picked and how many
-      // landed, never which ones.
-      cell.className = "vcell";
+      cell.className = "vcell" + (review
+        ? (t.correct[k] ? " hit" : " miss") + (never.includes(k) ? " never" : "")
+        : "");
       cell.textContent = k + ":" + t.pick[k];
+      if (review) {
+        cell.title = METRIC_NAMES[k][0] + ": " +
+          (METRIC_NAMES[k][1][t.pick[k]] || t.pick[k]) +
+          (t.correct[k] ? " \u2014 correct" : " \u2014 wrong");
+      }
       row.appendChild(cell);
     }
     const cnt = document.createElement("span");
@@ -2296,6 +2329,23 @@ function renderVectorTries() {
     sc.textContent = t.score.toFixed(1);
     row.appendChild(sc);
     wrap.appendChild(row);
+  }
+
+  // Name the metric that was wrong every single time - on this board that is
+  // the whole lesson, and it is invisible if you only see counts.
+  const old = $("vtry-lesson");
+  if (old) old.remove();
+  if (review && never.length) {
+    const note = document.createElement("div");
+    note.className = "vtry-lesson";
+    note.id = "vtry-lesson";
+    const labels = never.map((k) =>
+      METRIC_NAMES[k][0] + " \u2192 " + (METRIC_NAMES[k][1][parseVector()[k]] ||
+        parseVector()[k]));
+    note.textContent = (never.length === 1
+      ? "Never got right: "
+      : "Never got right: ") + labels.join(" \u00b7 ");
+    wrap.appendChild(note);
   }
 }
 

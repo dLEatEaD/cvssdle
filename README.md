@@ -91,6 +91,15 @@ time in 2,592 instead of 1 in 3. It is stable across re-renders and reloads,
 because the picker re-renders on every click and options must not move under
 the cursor.
 
+**Marking appears once the game is over, never during it.** Withholding
+per-metric feedback is what makes the mode hard, but once the answer is on
+screen that information is already the player's — so the finished board marks
+every attempt green/red, and calls out any metric that was wrong in *all* of
+them. That last line is usually the whole lesson: a board reading 3 → 4 → 6 → 7
+looks like bad luck until you see Privileges Required was `H` in every attempt
+when an unauthenticated RCE is `N`. `check_vector.py` asserts the marking is
+absent while the game is live and present once it is decided.
+
 **The live readout shows a severity band, not a number.** Of the 84 distinct
 scores a CVSS v3.1 vector can take, exactly one — 9.8 — is
 produced by a *single* vector out of all 2,592. That vector is also the 36.5%

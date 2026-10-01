@@ -206,6 +206,63 @@ def main() -> None:
         if first != "\U0001F7E9" * 7 + "\u2B1C":
             failures.append(
                 f"the share grid leaks metric positions: {first!r}")
+
+        # --- per-metric marking appears only once the game is decided --
+        # During play it is the exploit. After the reveal the answer is already
+        # on screen, so marking each attempt costs nothing and is the most
+        # useful thing the board can say: which metric you never got right.
+        review = page.evaluate(
+            """() => {
+              localStorage.clear(); setVectorMode(true); startDaily();
+              const ans = parseVector();
+              const wrong = (k) => Object.keys(METRIC_NAMES[k][1])
+                                     .find(o => o !== ans[k]);
+              // Four attempts, each correct except Privileges Required, which
+              // is wrong every single time.
+              const during = [];
+              for (let i = 0; i < 4; i++) {
+                for (const k of HINT_ORDER) vectorPick[k] = ans[k];
+                vectorPick.PR = wrong('PR');
+                if (i < 3) vectorPick.AV = wrong('AV');   // vary the others
+                renderVectorPreview();
+                document.getElementById('btn-submit-vector').click();
+                if (!finished) {
+                  during.push([...document.querySelectorAll('.vcell')]
+                    .filter(c => /hit|miss|never/.test(c.className)).length);
+                }
+              }
+              const cells = [...document.querySelectorAll('.vcell')];
+              const lesson = document.getElementById('vtry-lesson');
+              return {
+                markedDuringPlay: during,
+                finished,
+                hits: cells.filter(c => c.className.includes('hit')).length,
+                misses: cells.filter(c => c.className.includes('miss')).length,
+                never: cells.filter(c => c.className.includes('never')).length,
+                lesson: lesson ? lesson.textContent : null,
+              };
+            }"""
+        )
+        if any(n > 0 for n in review["markedDuringPlay"]):
+            failures.append(
+                f"metrics were marked right/wrong mid-game: "
+                f"{review['markedDuringPlay']} - that is the lock-the-greens exploit")
+        if not review["finished"]:
+            failures.append("four attempts did not end the game")
+        if review["hits"] == 0 or review["misses"] == 0:
+            failures.append(
+                f"the finished board is not marked up "
+                f"(hits={review['hits']}, misses={review['misses']})")
+        # Privileges Required was wrong in all four attempts, so all four of its
+        # cells should carry the "never" marker.
+        if review["never"] != 4:
+            failures.append(
+                f"expected 4 'never right' cells for Privileges Required, "
+                f"got {review['never']}")
+        if not review["lesson"] or "Privileges Required" not in review["lesson"]:
+            failures.append(
+                f"the post-game note does not name the metric that was never "
+                f"right: {review['lesson']!r}")
         # --- the left column must not spell a vector ------------------
         # CVSS lists each metric's values worst-first, so the first option in
         # all eight rows spelled AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H - the 9.8
