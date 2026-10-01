@@ -2104,9 +2104,22 @@ let vectorPick = {};
 /* One entry per submitted attempt: { pick, correct: {metric: bool}, score } */
 let vectorTries = [];
 
+/* Nothing is pre-selected. An earlier build defaulted every metric to the
+   worst value, which spells AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H - CVSS 9.8,
+   and the single most common vector in the KEV catalog. Opening vector mode
+   and pressing Submit without touching anything therefore won outright on 274
+   of the 751 puzzles in the pool, 36.5%. That is precisely the "memorise one
+   answer and beat the people who understand the rubric" failure vector mode
+   exists to remove, so there is no safe default: the player has to choose all
+   eight. */
 function resetVector() {
-  vectorPick = { AV: "N", AC: "L", PR: "N", UI: "N", S: "U", C: "H", I: "H", A: "H" };
+  vectorPick = {};
   vectorTries = [];
+}
+
+/* Every metric chosen - the only state from which a vector may be submitted. */
+function vectorComplete(pick) {
+  return HINT_ORDER.every((k) => typeof pick[k] === "string" && pick[k]);
 }
 
 function vectorMatches(pick, answer) {
@@ -2120,7 +2133,7 @@ function vectorSolved(correct) {
 }
 
 function vectorString(pick) {
-  return "CVSS:3.1/" + HINT_ORDER.map((k) => k + ":" + pick[k]).join("/");
+  return "CVSS:3.1/" + HINT_ORDER.map((k) => k + ":" + (pick[k] || "?")).join("/");
 }
 
 function renderMetricPicker() {
@@ -2160,9 +2173,21 @@ function renderMetricPicker() {
 }
 
 function renderVectorPreview() {
+  const done = vectorComplete(vectorPick);
   $("vector-preview").textContent = vectorString(vectorPick);
-  const s = scoreVector(vectorPick);
-  $("vector-score").textContent = s.toFixed(1);
+  // No score until the vector is whole: a partial selection has no CVSS score,
+  // and showing one invites treating the number as the puzzle again.
+  $("vector-score").textContent = done ? scoreVector(vectorPick).toFixed(1) : "\u2014";
+
+  const chosen = HINT_ORDER.filter((k) => vectorPick[k]).length;
+  const btn = $("btn-submit-vector");
+  if (btn) {
+    btn.disabled = !done;
+    btn.textContent = done
+      ? "Submit vector"
+      : "Pick all eight (" + chosen + "/" + HINT_ORDER.length + ")";
+  }
+
   const left = VECTOR_TRIES - vectorTries.length;
   $("vector-tries").textContent =
     left + (left === 1 ? " try left" : " tries left") +
@@ -2191,6 +2216,12 @@ function renderVectorTries() {
 
 function submitVector() {
   if (finished) return;
+  // Belt and braces: the button is disabled while incomplete, but a partial
+  // vector must never reach scoring even if that is bypassed.
+  if (!vectorComplete(vectorPick)) {
+    toast("Pick all eight metrics first");
+    return;
+  }
   const answer = parseVector();
   const correct = vectorMatches(vectorPick, answer);
   const score = scoreVector(vectorPick);

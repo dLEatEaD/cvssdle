@@ -69,6 +69,14 @@ Building the vector has 2,592 combinations and no shortcut — you have to read
 the advisory. The in-game calculator implements CVSS v3.1 §7.1 directly and is
 held to NVD's published score for every puzzle in the pool by `check_cvss.py`.
 
+**Nothing is pre-selected.** The first cut of vector mode defaulted every metric
+to its worst value, which spells `AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H` — CVSS
+9.8, and the single most common vector in the KEV catalog. Opening vector mode
+and pressing Submit without touching anything therefore won outright on **274 of
+751 puzzles, 36.5%**. That is the exact failure vector mode exists to remove, so
+there is no default: all eight metrics must be chosen before Submit is enabled,
+and a partial vector shows no score. `check_vector.py` gates it.
+
 Mode is opt-in and remembered per browser. The two modes keep separate saved
 boards, so switching does not destroy a game in progress.
 

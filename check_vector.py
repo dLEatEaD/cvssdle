@@ -55,14 +55,74 @@ def main() -> None:
         if d["vector"] or not d["score"] or d["vec"]:
             failures.append("vector mode is not opt-in; score mode must be the default")
 
+        # --- nothing is pre-selected ----------------------------------
+        # An earlier build defaulted every metric to its worst value, which is
+        # AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H - CVSS 9.8, and the most common
+        # vector in the KEV catalog. Opening vector mode and pressing Submit
+        # won outright on 36.5% of the pool. There is no safe default.
+        blank = page.evaluate(
+            """() => {
+              localStorage.clear(); setVectorMode(true); startDaily();
+              const btn = document.getElementById('btn-submit-vector');
+              const picked = HINT_ORDER.filter(k => vectorPick[k]).length;
+              // Try to submit anyway, as a bypass of the disabled button would.
+              submitVector();
+              return { picked,
+                       disabled: btn.disabled,
+                       label: btn.textContent,
+                       preview: document.getElementById('vector-preview').textContent,
+                       score: document.getElementById('vector-score').textContent,
+                       tries: vectorTries.length,
+                       finished, won };
+            }"""
+        )
+        if blank["picked"] != 0:
+            failures.append(
+                f"{blank['picked']} metrics are pre-selected - a default vector "
+                "hands the answer to every puzzle that happens to match it")
+        if not blank["disabled"]:
+            failures.append("the submit button is enabled with no metrics chosen")
+        if blank["tries"] or blank["finished"] or blank["won"]:
+            failures.append(
+                "an untouched vector could be submitted - this is the 36.5% "
+                "free-win bug")
+        if "?" not in blank["preview"]:
+            failures.append(f"the preview should mark unset metrics, got {blank['preview']!r}")
+        if blank["score"] not in ("\u2014", "-"):
+            failures.append(
+                f"a partial vector showed a score of {blank['score']!r}; it has none")
+
+        # Still refused when only seven of eight are chosen.
+        partial = page.evaluate(
+            """() => {
+              localStorage.clear(); setVectorMode(true); startDaily();
+              const ans = parseVector();
+              for (const k of HINT_ORDER.slice(0, 7)) vectorPick[k] = ans[k];
+              renderVectorPreview();
+              submitVector();
+              return { disabled: document.getElementById('btn-submit-vector').disabled,
+                       tries: vectorTries.length };
+            }"""
+        )
+        if not partial["disabled"] or partial["tries"]:
+            failures.append("a seven-of-eight vector was accepted")
+
         # --- hints stay locked, and the score is derived --------------
         v = page.evaluate(
             """() => {
-              document.getElementById('mode-vector').click();
+              localStorage.clear(); setVectorMode(true); startDaily();
+              // Fill the vector so a score exists to compare against.
+              const ans = parseVector();
+              for (const k of HINT_ORDER) vectorPick[k] = ans[k];
+              renderMetricPicker(); renderVectorPreview();
               const before = document.getElementById('vector-score').textContent;
               const rows = [...document.querySelectorAll('.metric-row')];
               const opts = [...rows[0].querySelectorAll('.metric-opt')];
-              opts[opts.length - 1].click();     // worst Attack Vector
+              // Pick an Attack Vector that differs from the answer's, so the
+              // derived score is guaranteed to move.
+              const codes = Object.keys(METRIC_NAMES.AV[1]);
+              const idx = codes.findIndex(c => c !== ans.AV);
+              opts[idx].click();
               return { revealed: document.querySelectorAll('.hint.revealed').length,
                        metrics: rows.length,
                        before, after: document.getElementById('vector-score').textContent,
