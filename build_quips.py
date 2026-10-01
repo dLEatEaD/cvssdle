@@ -241,6 +241,42 @@ LOSS = ("Out of guesses", [
     "Tomorrow is another CVE. This one belongs to the void.",
 ])
 
+# Shown when the player ran out of guesses but landed within 0.5 of the answer.
+# Deliberately not a win - but being half a point out is genuinely good CVSS
+# work and deserves to be told apart from a wild miss.
+NEAR = ("So close \U0001F91E", [
+    "Within half a point. That is a correct severity call by any practical measure.",
+    "Close enough that a real triage would have reached the same decision.",
+    "Half a point out. The rubric split hairs with you.",
+    "You had the shape of it exactly right.",
+    "That is the right answer with a rounding dispute attached.",
+    "Near miss. Your instincts were sound, the arithmetic was unlucky.",
+    "So close the difference would not change a single remediation priority.",
+    "A fraction out. Nobody would argue with your triage.",
+    "You read the vector correctly and landed a whisker away.",
+    "That margin is smaller than most vendors' own disagreements.",
+    "Close enough to be right in every way that matters operationally.",
+    "Half a point. Somewhere a CVSS calculator is being smug.",
+    "You were in the right neighbourhood and knocked on the wrong door.",
+    "Correct severity band, wrong decimal. Take the moral victory.",
+    "That is a miss on paper and a hit in practice.",
+    "Painfully close. The kind of miss that stings more than a bad guess.",
+    "You bracketed it perfectly and still could not land it.",
+    "A near miss at this range is skill, not luck.",
+    "So close the scoring guide would call it a judgement call.",
+    "That is within the margin most analysts argue over anyway.",
+    "Nearly. The vector was telling you the truth and you nearly heard it.",
+    "Half a point adrift, and a perfectly defensible answer.",
+    "You would pass peer review with that, just not this game.",
+    "Close. Genuinely, respectably close.",
+    "That one was decided by a single metric value.",
+    "A hair out. Your reasoning was right.",
+    "So near. The base score was being needlessly precise.",
+    "Within half a point and out of guesses. Brutal combination.",
+    "You found the right answer and then walked past it.",
+    "That is the best kind of loss. Still a loss, mind.",
+])
+
 
 def js_array(items: list[str], indent: str) -> str:
     return "\n".join(f"{indent}{json.dumps(s, ensure_ascii=False)}," for s in items)
@@ -252,6 +288,8 @@ def main() -> None:
         assert len(set(quips)) == len(quips), f"tier {n} has duplicates"
     assert len(LOSS[1]) >= REQUIRED, f"loss has {len(LOSS[1])}"
     assert len(set(LOSS[1])) == len(LOSS[1]), "loss has duplicates"
+    assert len(NEAR[1]) >= REQUIRED, f"near has {len(NEAR[1])}"
+    assert len(set(NEAR[1])) == len(NEAR[1]), "near has duplicates"
 
     blocks = []
     for n, (title, quips) in TIERS.items():
@@ -263,20 +301,22 @@ def main() -> None:
         )
     verdicts = (
         "const VERDICTS = {\n" + "\n".join(blocks) + "\n};\n\n"
-        "const LOSS_QUIPS = [\n" + js_array(LOSS[1], "  ") + "\n];"
+        "const LOSS_QUIPS = [\n" + js_array(LOSS[1], "  ") + "\n];\n\n"
+        "const NEAR_QUIPS = [\n" + js_array(NEAR[1], "  ") + "\n];"
     )
 
     text = TARGET.read_text()
     pattern = re.compile(
-        r"const VERDICTS = \{.*?\n\};\n\nconst LOSS_QUIPS = \[.*?\n\];", re.S
+        r"const VERDICTS = \{.*?\n\};\n\nconst LOSS_QUIPS = \[.*?\n\];"
+        r"(?:\n\nconst NEAR_QUIPS = \[.*?\n\];)?", re.S
     )
     if not pattern.search(text):
         raise SystemExit("could not locate the VERDICTS / LOSS_QUIPS block")
     TARGET.write_text(pattern.sub(lambda _: verdicts, text, count=1))
 
-    total = sum(len(q) for _, q in TIERS.values()) + len(LOSS[1])
+    total = sum(len(q) for _, q in TIERS.values()) + len(LOSS[1]) + len(NEAR[1])
     print("Quips per tier:", {n: len(q) for n, (_, q) in TIERS.items()},
-          "loss:", len(LOSS[1]))
+          "loss:", len(LOSS[1]), "near:", len(NEAR[1]))
     print(f"Wrote {total} quips into {TARGET.name}")
 
 

@@ -413,6 +413,14 @@ dialog b { color: var(--cp-text); }
   font-size: 0.7rem; color: var(--cp-text-muted); margin: -2px 0 10px;
   padding-left: 2px;
 }
+.challenge {
+  border: 1px solid var(--cp-accent);
+  background: var(--cp-accent-soft);
+  border-radius: 10px; padding: 11px 14px; margin-bottom: 14px;
+  font-size: 0.88rem; color: var(--cp-text);
+  box-shadow: var(--cp-glow);
+}
+.challenge b { color: var(--cp-accent); }
 .teaser {
   font-size: 0.68rem; color: var(--cp-text-muted); margin-top: 8px;
   text-transform: uppercase; letter-spacing: .09em; font-weight: 600;
@@ -466,6 +474,7 @@ footer a:hover { text-decoration: underline; }
 </header>
 
 <main>
+  <div class="challenge" id="challenge" hidden></div>
   <div class="card" id="puzzle-card">
     <div class="puzzle-meta" id="puzzle-meta"></div>
     <p class="vuln-title" id="vuln-title"></p>
@@ -525,6 +534,7 @@ footer a:hover { text-decoration: underline; }
   <div class="trend" id="trend"></div>
   <div class="freeze" id="freeze"></div>
   <div class="weekend-note" id="weekend-note"></div>
+  <div class="freeze" id="near-count" hidden></div>
   <h2 style="font-size:.95rem">Guess distribution</h2>
   <div id="dist"></div>
   <div class="btn-row">
@@ -656,11 +666,32 @@ let puzzle, guesses = [], finished = false, won = false;
 /* ---------- rendering ---------- */
 const $ = (id) => document.getElementById(id);
 
+/* Proximity bands. In real CVSS work, landing within half a point is the
+   skill; a wild miss is not the same thing as a near miss, and scoring them
+   identically throws away the most interesting signal in the game. */
 function proximity(diff) {
   if (diff === 0) return { cls: "right", label: "Exact" };
   if (diff <= 0.5) return { cls: "hot", label: "Hot" };
   if (diff <= 1.5) return { cls: "warm", label: "Warm" };
   return { cls: "cold", label: "Cold" };
+}
+
+/* Partial credit for running out of guesses while close.
+   Deliberately NOT a win: win rate and streaks keep meaning exactly what they
+   say, and a near miss is reported as its own outcome rather than quietly
+   inflating the record. */
+const NEAR_MISS = 0.5;
+
+function closestMiss() {
+  if (!guesses.length) return null;
+  return Math.round(
+    Math.min(...guesses.map((g) => Math.abs(g - puzzle.score))) * 10
+  ) / 10;
+}
+
+function isNearMiss() {
+  const m = closestMiss();
+  return !won && m !== null && m <= NEAR_MISS;
 }
 
 function renderPuzzle() {
@@ -778,9 +809,59 @@ function shareUrl() {
 function shareText() {
   const head = practiceMode
     ? "CVSSdle practice"
-    : "CVSSdle #" + puzzleNumber() + " " + (won ? guesses.length : "X") + "/" + MAX_GUESSES;
-  const url = shareUrl();
+    : "CVSSdle #" + puzzleNumber() + " " +
+      (won ? guesses.length : (isNearMiss() ? "\u00bd" : "X")) + "/" + MAX_GUESSES;
+  const url = challengeUrl();
   return head + "\n" + shareGrid() + (url ? "\n" + url : "");
+}
+
+/* ---------- challenge links ---------- */
+
+/* A result encoded in the URL hash. No backend, nothing stored anywhere, and
+   the hash is never sent to the server - so a colleague can open your result,
+   see how you did, and play the same puzzle themselves.
+
+   Encodes only what is needed to render a scoreboard: puzzle number, the
+   sender's guess count, and whether they won. Never the answer: the recipient
+   has to actually play it. */
+function encodeChallenge() {
+  if (practiceMode) return "";
+  const outcome = won ? guesses.length : (isNearMiss() ? "n" : "x");
+  return "c" + puzzleNumber() + "." + outcome;
+}
+
+function parseChallenge(hash) {
+  const m = /^#c(\d+)\.([1-6]|n|x)$/.exec(hash || "");
+  if (!m) return null;
+  return { number: Number(m[1]), outcome: m[2] };
+}
+
+function challengeUrl() {
+  const base = shareUrl();
+  if (!base) return "";
+  const frag = encodeChallenge();
+  return frag ? base + "#" + frag : base;
+}
+
+/* Show an incoming challenge, if the puzzle matches today's. An old link is
+   ignored rather than shown misleadingly - the recipient would otherwise see a
+   score for a puzzle they cannot play. */
+function renderChallenge() {
+  const c = parseChallenge(location.hash);
+  const el = $("challenge");
+  if (!el) return;
+  if (!c || c.number !== puzzleNumber()) {
+    el.hidden = true;
+    return;
+  }
+  const how = c.outcome === "x" ? "did not get it"
+    : c.outcome === "n" ? "came within half a point"
+    : "got it in " + c.outcome + "/" + MAX_GUESSES;
+  el.hidden = false;
+  el.innerHTML = "\uD83C\uDFAF <b>You've been challenged.</b> They " + how +
+    " on today's puzzle. Your turn.";
+  // Clear the fragment so a refresh doesn't keep re-challenging.
+  history.replaceState(null, "", location.pathname + location.search);
 }
 
 /* Clipboard write with a legacy fallback, since the async Clipboard API is
@@ -1055,6 +1136,39 @@ const LOSS_QUIPS = [
   "Tomorrow is another CVE. This one belongs to the void.",
 ];
 
+const NEAR_QUIPS = [
+  "Within half a point. That is a correct severity call by any practical measure.",
+  "Close enough that a real triage would have reached the same decision.",
+  "Half a point out. The rubric split hairs with you.",
+  "You had the shape of it exactly right.",
+  "That is the right answer with a rounding dispute attached.",
+  "Near miss. Your instincts were sound, the arithmetic was unlucky.",
+  "So close the difference would not change a single remediation priority.",
+  "A fraction out. Nobody would argue with your triage.",
+  "You read the vector correctly and landed a whisker away.",
+  "That margin is smaller than most vendors' own disagreements.",
+  "Close enough to be right in every way that matters operationally.",
+  "Half a point. Somewhere a CVSS calculator is being smug.",
+  "You were in the right neighbourhood and knocked on the wrong door.",
+  "Correct severity band, wrong decimal. Take the moral victory.",
+  "That is a miss on paper and a hit in practice.",
+  "Painfully close. The kind of miss that stings more than a bad guess.",
+  "You bracketed it perfectly and still could not land it.",
+  "A near miss at this range is skill, not luck.",
+  "So close the scoring guide would call it a judgement call.",
+  "That is within the margin most analysts argue over anyway.",
+  "Nearly. The vector was telling you the truth and you nearly heard it.",
+  "Half a point adrift, and a perfectly defensible answer.",
+  "You would pass peer review with that, just not this game.",
+  "Close. Genuinely, respectably close.",
+  "That one was decided by a single metric value.",
+  "A hair out. Your reasoning was right.",
+  "So near. The base score was being needlessly precise.",
+  "Within half a point and out of guesses. Brutal combination.",
+  "You found the right answer and then walked past it.",
+  "That is the best kind of loss. Still a loss, mind.",
+];
+
 /* Deterministic pick so the quip doesn't change on re-render or reload. */
 function quipFor(list, seed) {
   return list[Math.abs(seed) % list.length];
@@ -1068,8 +1182,13 @@ function renderResult() {
   // Seed on the puzzle + guess count so the quip is stable across re-renders.
   const seed = puzzle.score * 10 + guesses.length + puzzle.id.length;
   const verdict = won ? VERDICTS[guesses.length] : null;
-  const heading = won ? verdict.title : "Out of guesses";
-  const quip = won ? quipFor(verdict.quips, seed) : quipFor(LOSS_QUIPS, seed);
+  const near = isNearMiss();
+  const heading = won
+    ? verdict.title
+    : (near ? "So close \uD83E\uDD1E" : "Out of guesses");
+  const quip = won
+    ? quipFor(verdict.quips, seed)
+    : quipFor(near ? NEAR_QUIPS : LOSS_QUIPS, seed);
 
   el.innerHTML =
     "<h2>" + heading + "</h2>" +
@@ -1080,6 +1199,7 @@ function renderResult() {
     '<a id="answer-link" target="_blank" rel="noopener"></a>' +
     '<div class="btn-row">' +
       '<button class="primary" id="btn-share">Share result</button>' +
+      '<button class="ghost" id="btn-challenge">Challenge</button>' +
       '<button class="ghost" id="btn-another">Practice again</button>' +
     "</div>" +
     (practiceMode ? "" : '<div class="countdown" id="countdown"></div>'
@@ -1129,6 +1249,20 @@ function renderResult() {
     box.select();
     toast("Press \u2318C to copy");
   };
+  const chBtn = $("btn-challenge");
+  if (chBtn) {
+    chBtn.onclick = async () => {
+      const url = challengeUrl();
+      if (!url) { toast("Challenge links need the published site"); return; }
+      const msg = "I scored " +
+        (won ? guesses.length + "/" + MAX_GUESSES
+             : (isNearMiss() ? "a near miss" : "nothing")) +
+        " on CVSSdle #" + puzzleNumber() + ". Beat that:\n" + url;
+      if (await copyText(msg)) toast("Challenge link copied");
+      else toast("Copy failed \u2014 try Share result");
+    };
+  }
+
   $("btn-another").onclick = startPractice;
   if (!practiceMode) tickCountdown();
 }
@@ -1250,6 +1384,9 @@ function blankStats() {
            // Rolling log of recent results, newest last. Powers the accuracy
            // trend; capped so storage cannot grow without bound.
            history: [],
+           // Near misses: out of guesses but within half a point. Tracked
+           // separately so win rate keeps meaning exactly what it says.
+           near: 0,
            // One missed day a month is forgiven rather than resetting the
            // streak. Losing a long streak to a day off is the single most
            // common reason people abandon a daily game.
@@ -1264,6 +1401,7 @@ function normaliseStats(s) {
   }
   if (!Array.isArray(s.history)) s.history = [];
   if (!("freezeUsedOn" in s)) s.freezeUsedOn = null;
+  if (typeof s.near !== "number") s.near = 0;
   if (typeof s.played !== "number") s.played = 0;
   if (typeof s.wins !== "number") s.wins = 0;
   if (typeof s.streak !== "number") s.streak = 0;
@@ -1336,11 +1474,12 @@ function recordStats() {
   }
 
   // Closest guess, so improvement is visible even on a loss.
-  const best = guesses.length
-    ? Math.min(...guesses.map((g) => Math.abs(g - puzzle.score)))
-    : null;
+  const best = closestMiss();
   s.history.push({ d: day, w: won, n: guesses.length, m: best });
   if (s.history.length > 60) s.history = s.history.slice(-60);
+  // Near misses are counted separately: they are not wins and must never
+  // inflate win rate, but they are worth surfacing as their own achievement.
+  if (isNearMiss()) s.near = (s.near || 0) + 1;
 
   s.lastDay = day;
   s.lastId = DAILY.puzzle.id;
@@ -1394,6 +1533,15 @@ function renderStats() {
   }
   $("weekend-note").textContent =
     "Weekends never break a streak \u2014 Friday to Monday counts as consecutive.";
+
+  const nearEl = $("near-count");
+  if (s.near > 0) {
+    nearEl.hidden = false;
+    nearEl.innerHTML = "\uD83E\uDD1E <b>" + s.near + "</b> near miss" +
+      (s.near === 1 ? "" : "es") + " \u2014 within half a point but out of guesses";
+  } else {
+    nearEl.hidden = true;
+  }
 
   const peak = Math.max(1, ...s.dist);
   $("dist").innerHTML = s.dist.map((n, i) => {
@@ -1478,6 +1626,10 @@ document.querySelectorAll("[data-close]").forEach((b) => {
 });
 
 startDaily();
+renderChallenge();
+// Clicking a challenge link while already on the site is a same-document
+// navigation: the hash changes but nothing reloads, so react to it explicitly.
+addEventListener("hashchange", renderChallenge);
 if (!load(KEY_STATS, null)) $("dlg-help").showModal();
 $("guess").focus();
 </script>

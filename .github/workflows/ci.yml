@@ -57,3 +57,6 @@ jobs:
 
       - name: Verify streaks survive weekends
         run: python3 check_streaks.py
+
+      - name: Verify partial credit and challenge links
+        run: python3 check_social.py

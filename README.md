@@ -32,6 +32,13 @@ quietly drills CVSS fluency.
   missed weekdays, so it continues the streak. Weekend play counts and
   never hurts, it just isn't required.
 - Shareable emoji result grid, Wordle-style.
+- **Partial credit**: running out of guesses while within half a point is
+  reported as a near miss rather than a flat loss. It is deliberately *not* a
+  win — win rate and streaks keep meaning exactly what they say — but landing
+  that close is real CVSS skill and is worth telling apart from a wild miss.
+- **Challenge links**: your result is encoded in the URL hash, so sending it to
+  a colleague shows them how you did and invites them to try the same puzzle.
+  No backend, nothing stored, and the answer is never in the link.
 - 210 end-of-game quips: only a first-guess win earns "Nailed it", and each
   of the other outcomes has 30 of its own.
 - Practice mode for unlimited extra puzzles.
@@ -78,6 +85,7 @@ did by shipping all 400 puzzles and selecting one client-side. Instead:
 | `check_compat.py` | CI gate: saved games from the live site must still load. |
 | `check_playable.py` | CI gate: plays a round and asserts the core loop works. |
 | `check_streaks.py` | CI gate: streaks must survive weekends. |
+| `check_social.py` | CI gate: partial credit and challenge links. |
 | `check_workflows.py` | CI gate: workflow steps must pass the secrets their scripts need. |
 | `check_schedule.py` | CI gate: cron, countdown and EPOCH must agree. |
 | `build_quips.py` | Source of the 210 end-of-game quips. |
