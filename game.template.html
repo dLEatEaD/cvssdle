@@ -506,27 +506,9 @@ button.wide { width: 100%; }
   font-weight: 700; font-size: 0.82rem; color: var(--cp-text-muted);
   margin-left: 10px;
 }
-.mode-toggle {
-  display: flex; gap: 0; border: 1px solid var(--cp-border);
-  border-radius: 9px; overflow: hidden; margin-bottom: 14px;
-}
-.mode-toggle button {
-  flex: 1; border: none; cursor: pointer; font-family: inherit;
-  font-size: 0.78rem; font-weight: 650; padding: 9px 10px;
-  background: var(--cp-surface); color: var(--cp-text-muted);
-  transition: all .12s;
-}
-.mode-toggle button[aria-pressed="true"] {
-  background: var(--cp-accent); color: var(--cp-accent-fg);
-}
-/* Locked for the day: still readable, clearly not clickable. */
-.mode-toggle button:disabled {
-  cursor: not-allowed; opacity: 0.4;
-}
-.mode-toggle button:disabled[aria-pressed="true"] { opacity: 1; }
 .mode-note {
   font-size: 0.68rem; color: var(--cp-text-muted); text-align: center;
-  margin: -8px 0 14px;
+  margin: 0 0 14px;
 }
 .help-mode {
   font-size: 0.82rem; margin: 16px 0 2px; color: var(--cp-accent);
@@ -596,10 +578,6 @@ footer a:hover { text-decoration: underline; }
 
 <main>
   <div class="challenge" id="challenge" hidden></div>
-  <div class="mode-toggle">
-    <button type="button" id="mode-score" aria-pressed="true">Guess the score</button>
-    <button type="button" id="mode-vector" aria-pressed="false">Build the vector</button>
-  </div>
   <div class="mode-note" id="mode-note"></div>
   <div class="card" id="puzzle-card">
     <div class="puzzle-meta" id="puzzle-meta"></div>
@@ -649,26 +627,15 @@ footer a:hover { text-decoration: underline; }
 <dialog id="dlg-help">
   <h2>How to play</h2>
   <p>Each day you get one real, actively-exploited vulnerability from the CISA KEV catalog. Everyone gets the same one, and a new one unlocks at local midnight.</p>
-  <p>There are <b>two ways to play it</b>. Pick one with the toggle at the top.</p>
-
-  <h3 class="help-mode">Guess the score</h3>
-  <p class="help-sub">Six tries at the CVSS v3.1 base score.</p>
+  <p>Read the advisory and <b>build its CVSS v3.1 vector</b> &mdash; all eight metrics &mdash; in four tries.</p>
   <ul>
-    <li>After each guess you're told whether the real score is <b>higher</b> or <b>lower</b>.</li>
-    <li>Colour shows how close you are: <span class="right">exact</span>, <span class="hot">hot (&le;0.5)</span>, <span class="warm">warm (&le;1.5)</span>, <span class="cold">cold</span>.</li>
-    <li>Every wrong guess reveals one metric from the real CVSS vector &mdash; attack vector, complexity, privileges required, and so on.</li>
-    <li>Run out of guesses within half a point and it's recorded as a <b>near miss</b> rather than a flat loss. It isn't a win, but it isn't nothing either.</li>
-  </ul>
-
-  <h3 class="help-mode">Build the vector</h3>
-  <p class="help-sub">Four tries to pick all eight metrics. The score is derived from your choice.</p>
-  <ul>
+    <li>Pick a value for every metric, then submit. The base score is derived from your choice, so you never guess the number directly.</li>
     <li>No metrics are revealed &mdash; they're the answer.</li>
-    <li>Each attempt tells you <b>how many</b> of the eight you got right &mdash; not which ones. Being told which would let you lock the greens and cycle the rest, and the mode would be solvable without reading anything.</li>
-    <li>This is the harder mode, and the honest one: the base score has few enough possible values that you can binary-search it without knowing any CVSS at all. Eight metrics have 2,592 combinations, and with only a count to go on there is no way through by hand except reading the advisory.</li>
+    <li>Each attempt tells you <b>how many</b> of the eight you got right &mdash; not which ones. Being told which would let you lock the correct ones and cycle the rest, and the game would be solvable without reading anything.</li>
+    <li>Once the game ends, every attempt is marked up and any metric you never got right is called out. That's usually the lesson.</li>
   </ul>
-
-  <p class="help-lock"><b>One mode per puzzle.</b> Your first guess of the day locks the mode in, because finishing either mode shows you the full answer &mdash; the score <i>and</i> the vector. The other mode unlocks with tomorrow's puzzle. Practice puzzles are exempt: switch freely there, nothing is recorded.</p>
+  <p>Eight metrics have 2,592 combinations, and with only a count to go on there is no way through by hand except actually reading the advisory. That's the point: guessing the score alone has few enough possible values that you can binary-search it knowing no CVSS at all.</p>
+  <p class="help-lock">Stuck? Hit <b>Practice puzzle</b> in the stats panel for up to three extra vulnerabilities a day. Practice never counts toward your streak or record.</p>
 
   <div class="btn-row"><button class="primary" data-close>Got it</button></div>
 </dialog>
@@ -1742,6 +1709,11 @@ function toast(msg) {
 /* ---------- game flow ---------- */
 function submitGuess() {
   if (finished) return;
+  // Score mode is retired. This path only still exists for a board that was
+  // already in progress when it was retired, which carries a "score" lock.
+  // Without this guard a stray call commits a *vector* lock and then renders a
+  // vector result with zero attempts, which throws.
+  if (vectorMode()) return;
   const input = $("guess");
   const raw = parseFloat(input.value);
   if (Number.isNaN(raw) || raw < 0 || raw > 10) {
@@ -1761,8 +1733,6 @@ function submitGuess() {
 
   renderGuesses();
   renderHints();
-  // The first move commits the mode, so the toggle has to re-render or it
-  // keeps offering a switch that switchMode will refuse.
   applyMode();
   if (finished) {
     if (!practiceMode) { recordStats(); persist(); }
@@ -2064,32 +2034,27 @@ function renderStats() {
 
 const PRACTICE_LIMIT = 3;
 const KEY_PRACTICE = "cvssdle.practice.v1";
-const KEY_MODE = "cvssdle.mode.v1";
 
-/* ---------- vector mode ----------
-   Score mode is solvable without knowing any CVSS: the answer carries about
-   3.4 bits of entropy, 9.8 alone wins a third of the time, and a plain binary
-   search wins every time. Vector mode asks for the eight metrics instead -
-   2,592 combinations - so the only route is actually reading the advisory.
-
-   Opt-in for now. The daily score game is untouched for anyone who ignores it. */
+/* ---------- the game ----------
+   Eight metrics, 2,592 combinations, four tries. The score is derived from
+   what you pick rather than guessed directly, so the only route is reading
+   the advisory. cvssdle.mode.v1 is no longer written or read - score mode is
+   retired - and a stale copy in a player's storage is simply ignored. */
 const VECTOR_TRIES = 4;
 
 /* ---------- mode lock ----------
-   The two modes share one answer, and finishing either one puts the whole
-   answer on screen: score mode reveals a metric per miss and prints the full
-   vector at the end, vector mode prints the score. So switching mode on the
-   same puzzle is not a mode switch, it is a lookup - play score mode, read the
-   vector off the result card, switch, and solve vector in one try. Abandoning
-   the first mode before it finishes dodges the recordStats day guard too, so
-   the laundered win records as genuine.
+   Originally this stopped a player finishing one mode, reading the answer off
+   the result card, and replaying it in the other - the two modes share one
+   answer, and finishing either puts the whole thing on screen.
 
-   The leak lives in the player's memory, not in storage, so hiding the reveal
-   would not fix it. Instead the first move of the day commits the mode, and
-   the other one unlocks with tomorrow's puzzle.
+   With score mode retired there is nothing left to launder, but the lock stays
+   for one job: it records which game a board belongs to. That is what lets a
+   score game already in progress finish on its own terms instead of being
+   wiped by the upgrade. It is keyed to today's puzzle, so it lapses by itself
+   at the next rollover.
 
    Practice is exempt: it draws a different puzzle each time and records
-   nothing, so there is nothing to launder. */
+   nothing. */
 const KEY_LOCK = "cvssdle.modelock.v1";
 
 function modeLock() {
@@ -2108,26 +2073,43 @@ function commitMode() {
   });
 }
 
-/* What the player picked, independent of today's lock - this is the setting
-   that carries over to tomorrow. */
+/* Building the vector is now the whole game. Score mode is retired: it was
+   solvable without knowing any CVSS - the answer carries about 3.4 bits, 9.8
+   alone wins a third of the time, and a plain binary search over the observed
+   scores wins every time - so it rewarded memorising six numbers over reading
+   an advisory.
+
+   One exception, and it expires on its own. A player who was part-way through
+   a score game when this shipped keeps it: their board is locked to "score"
+   for today, and vectorMode() resolves through that lock, so they can finish
+   the game they started. Tomorrow's puzzle has no lock and they get the vector
+   game like everyone else. Ending someone's in-flight board to save a few
+   lines is not a trade worth making. */
 function modePref() {
-  try { return localStorage.getItem(KEY_MODE) === "vector" ? "vector" : "score"; }
-  catch { return "score"; }
+  return "vector";
 }
 
-/* The mode actually in force. Every caller resolves through here, so the lock
-   applies to rendering, scoring, persistence and sharing without each of them
-   having to know it exists. */
+/* The mode actually in force. Every caller resolves through here, so a legacy
+   score lock applies to rendering, scoring, persistence and sharing without
+   any of them having to know score mode still exists. */
 function vectorMode() {
   if (!practiceMode) {
     const lock = modeLock();
     if (lock) return lock === "vector";
   }
-  return modePref() === "vector";
+  return true;
 }
 
-function setVectorMode(on) {
-  try { localStorage.setItem(KEY_MODE, on ? "vector" : "score"); } catch { /* sandboxed */ }
+/* A score board already in progress for today, saved before this build landed.
+   Pin it with a lock so restore() recognises it and the player can finish; it
+   is keyed to today's puzzle, so it lapses at the next rollover. */
+function adoptLegacyScoreBoard() {
+  if (modeLock()) return;
+  const st = load(KEY_STATE, null);
+  if (!st || st.day !== DAILY.number || st.id !== DAILY.puzzle.id) return;
+  if ((st.mode || "score") !== "score") return;
+  if (!Array.isArray(st.guesses) || !st.guesses.length) return;
+  save(KEY_LOCK, { day: DAILY.number, id: DAILY.puzzle.id, mode: "score" });
 }
 
 /* The player's current selection, metric -> value. */
@@ -2438,33 +2420,27 @@ function startPractice() {
 /* Show whichever play area the current mode needs, and hide the other. */
 function applyMode() {
   const v = vectorMode();
-  const lock = practiceMode ? null : modeLock();
   $("play-area").hidden = v || finished;
   $("vector-area").hidden = !v || finished;
-  $("mode-score").setAttribute("aria-pressed", String(!v));
-  $("mode-vector").setAttribute("aria-pressed", String(v));
 
-  // Once committed, the other mode is not a choice today - say so on the
-  // button rather than letting it look broken when clicked.
-  $("mode-score").disabled = Boolean(lock) && lock !== "score";
-  $("mode-vector").disabled = Boolean(lock) && lock !== "vector";
-
-  if (lock) {
-    $("mode-note").textContent = (v
-      ? "Pick all eight metrics. The score is derived \u2014 4 tries."
-      : "Guess the base score \u2014 6 tries, one metric revealed per miss.") +
-      " \u00b7 Locked in for today \u2014 the other mode returns with tomorrow's puzzle.";
+  if (!v) {
+    // A score board still in flight from before vector mode became the only
+    // game. Say so, so the player understands why this looks different today
+    // and is not surprised when tomorrow's puzzle changes.
+    $("mode-note").textContent =
+      "Finishing your score game \u2014 6 tries. Tomorrow's puzzle is the vector game.";
     return;
   }
-  $("mode-note").textContent = v
-    ? "Pick all eight metrics. The score is derived \u2014 4 tries."
-    : "Guess the base score \u2014 6 tries, one metric revealed per miss.";
+  $("mode-note").textContent =
+    "Pick all eight metrics. The score is derived \u2014 4 tries.";
 }
 
 function startDaily() {
   practiceMode = false;
   puzzle = DAILY.puzzle;
   guesses = []; finished = false; won = false;
+  // Must run before restore(): it decides which mode this board belongs to.
+  adoptLegacyScoreBoard();
   resetVector();
   const resumed = restore();
   // A board saved by a build that predates the lock still represents a mode
@@ -2482,19 +2458,6 @@ function startDaily() {
 /* ---------- wiring ---------- */
 $("btn-guess").onclick = submitGuess;
 $("btn-submit-vector").onclick = submitVector;
-function switchMode(toVector) {
-  // Locked for today: the other mode would just be a lookup of an answer this
-  // player has already been shown part of.
-  if (!practiceMode && modeLock() && modeLock() !== (toVector ? "vector" : "score")) {
-    toast("Mode is locked until tomorrow's puzzle");
-    return;
-  }
-  if (vectorMode() === toVector) return;
-  setVectorMode(toVector);
-  if (practiceMode) startPractice(); else startDaily();
-}
-$("mode-score").onclick = () => switchMode(false);
-$("mode-vector").onclick = () => switchMode(true);
 $("guess").addEventListener("keydown", (e) => { if (e.key === "Enter") submitGuess(); });
 $("btn-help").onclick = () => $("dlg-help").showModal();
 $("btn-stats").onclick = () => { renderStats(); $("dlg-stats").showModal(); };

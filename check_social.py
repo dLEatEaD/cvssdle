@@ -4,7 +4,10 @@
 Two things worth protecting here.
 
 A near miss - out of guesses but within half a point - must be reported as its
-own outcome and must never count as a win. Win rate and streaks are the numbers
+own outcome and must never count as a win. It is a score-mode outcome, and
+score mode is retired, so these cases pin a score lock: the rule still has to
+hold for a board that was in flight when the mode was retired, and the s.near
+counter still reports historical near misses in the stats panel. Win rate and streaks are the numbers
 people compare, so quietly inflating them would make the whole record
 meaningless.
 
@@ -46,7 +49,14 @@ def main() -> None:
             """() => {
               const d = document.getElementById('dlg-help');
               if (d && d.open) d.close();
-              localStorage.clear(); startDaily();
+              localStorage.clear();
+              // Near miss and the score board are retired for new games,
+              // but still reachable by a board that was in flight when the
+              // mode was retired. Pin that state so the rule is still
+              // enforced for the players who can hit it.
+              save(KEY_LOCK, { day: DAILY.number, id: DAILY.puzzle.id,
+                               mode: 'score' });
+              startDaily();
               const a = DAILY.puzzle.score;
               const i = document.getElementById('guess');
               const g = document.getElementById('btn-guess');
@@ -73,7 +83,14 @@ def main() -> None:
         page.goto(url)
         far = page.evaluate(
             """() => {
-              localStorage.clear(); startDaily();
+              localStorage.clear();
+              // Near miss and the score board are retired for new games,
+              // but still reachable by a board that was in flight when the
+              // mode was retired. Pin that state so the rule is still
+              // enforced for the players who can hit it.
+              save(KEY_LOCK, { day: DAILY.number, id: DAILY.puzzle.id,
+                               mode: 'score' });
+              startDaily();
               const i = document.getElementById('guess');
               const g = document.getElementById('btn-guess');
               [0.1,0.2,0.3,0.4,0.5,0.6].forEach(v => { i.value = v.toFixed(1); g.click(); });
@@ -90,7 +107,14 @@ def main() -> None:
         page.goto(url)
         link = page.evaluate(
             """() => {
-              localStorage.clear(); startDaily();
+              localStorage.clear();
+              // Near miss and the score board are retired for new games,
+              // but still reachable by a board that was in flight when the
+              // mode was retired. Pin that state so the rule is still
+              // enforced for the players who can hit it.
+              save(KEY_LOCK, { day: DAILY.number, id: DAILY.puzzle.id,
+                               mode: 'score' });
+              startDaily();
               const i = document.getElementById('guess');
               const g = document.getElementById('btn-guess');
               i.value = '5.0'; g.click();

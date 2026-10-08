@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""CI gate: vector mode.
+"""CI gate: the vector game.
 
-Score mode is solvable without knowing any CVSS - a plain binary search wins
-every time - so vector mode exists to make domain knowledge the only route.
-That only holds if the mode genuinely never leaks the answer, and if switching
-between modes cannot corrupt either board.
+Guessing the score outright was solvable without knowing any CVSS - a plain
+binary search wins every time - so it was retired and building the vector is
+now the whole game. That only holds if the game genuinely never leaks the
+answer, and if a board left over from the retired mode cannot corrupt it.
 
 Checks the things that would quietly ruin it:
-  - score mode stays the default, so nobody is opted in by surprise
+  - the vector game is the only game, with no toggle and no way back
   - no metric is pre-selected, and an incomplete vector cannot be submitted
   - feedback is a count, never a per-metric map
   - the metric hints stay locked, since in vector mode they are the answer
   - the derived score tracks the player's selection
   - a solved vector wins, four wrong attempts lose
-  - the two modes keep separate saved boards
+  - a stale score board is never replayed as vector progress
   - vector challenge fragments round-trip and reject nonsense
 """
 
@@ -43,7 +43,7 @@ def main() -> None:
         page.on("pageerror", lambda e: errors.append(str(e)))
         page.goto(url)
 
-        # --- score mode is the default --------------------------------
+        # --- the vector game is the only game -------------------------
         d = page.evaluate(
             """() => {
               const h = document.getElementById('dlg-help');
@@ -51,11 +51,18 @@ def main() -> None:
               localStorage.clear(); startDaily();
               return { vector: vectorMode(),
                        score: !document.getElementById('play-area').hidden,
-                       vec: !document.getElementById('vector-area').hidden };
+                       vec: !document.getElementById('vector-area').hidden,
+                       toggle: !!document.querySelector('.mode-toggle'),
+                       switcher: typeof switchMode };
             }"""
         )
-        if d["vector"] or not d["score"] or d["vec"]:
-            failures.append("vector mode is not opt-in; score mode must be the default")
+        if not d["vector"] or d["score"] or not d["vec"]:
+            failures.append(
+                "a fresh player does not land in the vector game")
+        if d["toggle"]:
+            failures.append("the mode toggle is still in the page")
+        if d["switcher"] != "undefined":
+            failures.append("switchMode still exists; score mode is retired")
 
         # --- nothing is pre-selected ----------------------------------
         # An earlier build defaulted every metric to its worst value, which is
@@ -64,7 +71,7 @@ def main() -> None:
         # won outright on 36.5% of the pool. There is no safe default.
         blank = page.evaluate(
             """() => {
-              localStorage.clear(); setVectorMode(true); startDaily();
+              localStorage.clear(); startDaily();
               const btn = document.getElementById('btn-submit-vector');
               const picked = HINT_ORDER.filter(k => vectorPick[k]).length;
               // Try to submit anyway, as a bypass of the disabled button would.
@@ -102,7 +109,7 @@ def main() -> None:
         # catalogue with no CVSS knowledge whatsoever.
         oracle = page.evaluate(
             """() => {
-              localStorage.clear(); setVectorMode(true); startDaily();
+              localStorage.clear(); startDaily();
               // The unique 9.8 vector.
               const nine8 = { AV:'N', AC:'L', PR:'N', UI:'N', S:'U',
                               C:'H', I:'H', A:'H' };
@@ -128,7 +135,7 @@ def main() -> None:
         # --- the answer is revealed once a vector game ends ------------
         reveal = page.evaluate(
             """() => {
-              localStorage.clear(); setVectorMode(true); startDaily();
+              localStorage.clear(); startDaily();
               const masked = document.querySelectorAll('.hint.revealed').length;
               for (const k of HINT_ORDER) vectorPick[k] = parseVector()[k];
               renderMetricPicker(); renderVectorPreview();
@@ -148,7 +155,7 @@ def main() -> None:
         # Still refused when only seven of eight are chosen.
         partial = page.evaluate(
             """() => {
-              localStorage.clear(); setVectorMode(true); startDaily();
+              localStorage.clear(); startDaily();
               const ans = parseVector();
               for (const k of HINT_ORDER.slice(0, 7)) vectorPick[k] = ans[k];
               renderVectorPreview();
@@ -167,7 +174,7 @@ def main() -> None:
         # The player learns how many landed, never which.
         fbk = page.evaluate(
             """() => {
-              localStorage.clear(); setVectorMode(true); startDaily();
+              localStorage.clear(); startDaily();
               const ans = parseVector();
               // Get exactly seven of eight right - the state that used to give
               // the answer away completely.
@@ -213,7 +220,7 @@ def main() -> None:
         # useful thing the board can say: which metric you never got right.
         review = page.evaluate(
             """() => {
-              localStorage.clear(); setVectorMode(true); startDaily();
+              localStorage.clear(); startDaily();
               const ans = parseVector();
               const wrong = (k) => Object.keys(METRIC_NAMES[k][1])
                                      .find(o => o !== ans[k]);
@@ -270,7 +277,7 @@ def main() -> None:
         # won better than one day in three, with no reading at all.
         left = page.evaluate(
             """() => {
-              localStorage.clear(); setVectorMode(true); startDaily();
+              localStorage.clear(); startDaily();
               // Click the leftmost option in every row, as a player skimming
               // the form would. The picker re-renders each time.
               for (let i = 0; i < HINT_ORDER.length; i++) {
@@ -324,7 +331,7 @@ def main() -> None:
         # --- hints stay locked, and the score is derived --------------
         v = page.evaluate(
             """() => {
-              localStorage.clear(); setVectorMode(true); startDaily();
+              localStorage.clear(); startDaily();
               // Fill the vector so a score exists to compare against.
               const ans = parseVector();
               for (const k of HINT_ORDER) vectorPick[k] = ans[k];
@@ -363,7 +370,6 @@ def main() -> None:
         win = page.evaluate(
             """() => {
               localStorage.clear(); startDaily();
-              document.getElementById('mode-vector').click();
               Object.assign(vectorPick, parseVector());
               renderMetricPicker(); renderVectorPreview();
               document.getElementById('btn-submit-vector').click();
@@ -386,7 +392,6 @@ def main() -> None:
         lose = page.evaluate(
             """() => {
               localStorage.clear(); startDaily();
-              document.getElementById('mode-vector').click();
               const ans = parseVector();
               for (let i = 0; i < 4; i++) {
                 for (const k of HINT_ORDER) {
@@ -409,83 +414,42 @@ def main() -> None:
         if not lose["frag"].endswith(".vx"):
             failures.append(f"vector loss fragment is {lose['frag']!r}, expected .vx")
 
-        # --- the two modes keep separate boards -----------------------
-        # Switching mid-puzzle is now refused outright (see check_modes.py), so
-        # the invariant that still matters is in restore(): a board saved in one
-        # mode must never be loaded as the other. That is what protects a player
-        # whose lock is absent - an upgrade from a pre-lock build, or a cleared
-        # lock - from being shown a finished result they never played.
+        # --- a stale score board never touches the vector game --------
+        # Score mode is retired, but boards it saved still exist in players'
+        # storage. One from an earlier puzzle must be ignored outright: the
+        # player gets today's vector game, not replayed progress scored a
+        # different way. (A score board for *today* is a separate case and is
+        # deliberately honoured - see check_modes.py.)
         sep = page.evaluate(
             """() => {
               localStorage.clear();
-              document.getElementById('mode-score').click();
+              save(KEY_STATE, {
+                day: DAILY.number - 3, id: 'CVE-1999-0001', mode: 'score',
+                guesses: [5.0, 9.8], vectorTries: [],
+                finished: true, won: true,
+              });
               startDaily();
-              const i = document.getElementById('guess');
-              const g = document.getElementById('btn-guess');
-              i.value = '5.0'; g.click();
-              i.value = DAILY.puzzle.score.toFixed(1); g.click();   // finish it
-              const scoreRows = document.querySelectorAll('.row:not(.empty)').length;
-              const scoreFinished = !document.getElementById('result').hidden;
-              const saved = load(KEY_STATE, null);
-
-              // Drop the lock and flip the preference, simulating a player who
-              // arrives in vector mode with a score board already on disk.
-              localStorage.removeItem(KEY_LOCK);
-              setVectorMode(true);
-              startDaily();
-              const vec = {
+              return {
+                vector: vectorMode(),
                 restored: restore(),
-                rows: document.querySelectorAll('.vtry').length,
+                vtries: document.querySelectorAll('.vtry').length,
                 finished: !document.getElementById('result').hidden,
                 playable: !document.getElementById('vector-area').hidden,
               };
-
-              // The score board itself must still be on disk, untouched.
-              const after = load(KEY_STATE, null);
-              return { scoreRows, scoreFinished, vec,
-                       savedMode: saved && saved.mode,
-                       keptMode: after && after.mode };
             }"""
         )
-        if sep["scoreRows"] != 2 or not sep["scoreFinished"]:
-            failures.append("the score game did not complete as expected")
-        if sep["savedMode"] != "score":
-            failures.append("the finished score board was not saved as a score board")
-        if sep["vec"]["restored"]:
-            failures.append("a score board was restored as a vector board")
-        if sep["vec"]["rows"] != 0:
-            failures.append("switching to vector mode carried the score board across")
-        if sep["vec"]["finished"]:
+        if not sep["vector"]:
             failures.append(
-                "vector mode showed a finished result inherited from score mode")
-        if not sep["vec"]["playable"]:
-            failures.append("vector mode was not playable after switching")
-
-        # Vector progress must likewise not bleed into score mode.
-        sep2 = page.evaluate(
-            """() => {
-              localStorage.clear();
-              setVectorMode(true);
-              startDaily();
-              Object.assign(vectorPick, parseVector());
-              renderMetricPicker(); renderVectorPreview();
-              document.getElementById('btn-submit-vector').click();   // solved
-              const vectorFinished = !document.getElementById('result').hidden;
-              localStorage.removeItem(KEY_LOCK);
-              setVectorMode(false);
-              startDaily();
-              return { vectorFinished,
-                       restored: restore(),
-                       scoreRows: document.querySelectorAll('.row:not(.empty)').length,
-                       scoreFinished: !document.getElementById('result').hidden };
-            }"""
-        )
-        if not sep2["vectorFinished"]:
-            failures.append("the vector game did not complete as expected")
-        if sep2["restored"]:
-            failures.append("a vector board was restored as a score board")
-        if sep2["scoreRows"] != 0 or sep2["scoreFinished"]:
-            failures.append("a solved vector leaked a finished board into score mode")
+                "a score board from another puzzle pulled the player into score mode")
+        if sep["restored"]:
+            failures.append("a stale score board was restored as a vector board")
+        if sep["vtries"] != 0:
+            failures.append("a stale score board carried attempts into the vector game")
+        if sep["finished"]:
+            failures.append(
+                "the vector game showed a finished result inherited from a stale board")
+        if not sep["playable"]:
+            failures.append("the vector game was not playable with a stale score board")
 
         # --- vector challenge fragments -------------------------------
         n = page.evaluate("() => DAILY.number")
@@ -512,8 +476,8 @@ def main() -> None:
         for f in failures:
             print("FAIL:", f)
         sys.exit(f"{len(failures)} vector-mode failures")
-    print("OK: vector mode is opt-in, never reveals the answer, and keeps a "
-          "separate board from score mode")
+    print("OK: the vector game is the only game, never reveals the answer, and "
+          "ignores boards left by the retired score mode")
 
 
 if __name__ == "__main__":

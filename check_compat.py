@@ -53,6 +53,14 @@ LEGACY_STATES = [
     ("too many guesses", "discard",
      {"day": None, "id": None, "guesses": [1, 2, 3, 4, 5, 6, 7], "finished": True,
       "won": False}),
+    # Score mode was retired on 2026-10-08. A board it saved for today is still
+    # adopted so the player can finish it; one from another puzzle is dropped.
+    ("retired score board, in flight today", "resume",
+     {"day": None, "id": None, "mode": "score", "guesses": [5.0, 7.0],
+      "vectorTries": [], "finished": False, "won": False}),
+    ("retired score board, finished today", "resume",
+     {"day": None, "id": None, "mode": "score", "guesses": [5.0, 9.8],
+      "vectorTries": [], "finished": True, "won": False}),
 ]
 
 LEGACY_STATS = [
@@ -124,19 +132,27 @@ def browser_checks(daily: dict) -> bool:
             res = page.evaluate(
                 "() => ({"
                 " rows: document.querySelectorAll('.row:not(.empty)').length,"
-                " playable: !document.getElementById('play-area').hidden,"
+                " vtries: document.querySelectorAll('.vtry').length,"
+                # "Playable" depends on which game the restored board belongs
+                # to: a board adopted from the retired score mode shows the
+                # guess input, everything else shows the vector picker.
+                " playable: vectorMode()"
+                "   ? !document.getElementById('vector-area').hidden"
+                "   : !document.getElementById('play-area').hidden,"
                 " finished: !document.getElementById('result').hidden })"
             )
             if expect == "resume":
-                expected = len(state["guesses"])
-                if res["rows"] != expected:
+                expected = len(state.get("guesses") or []) or len(
+                    state.get("vectorTries") or [])
+                got = res["rows"] or res["vtries"]
+                if got != expected:
                     failures.append(
-                        f"{label}: expected {expected} rows restored, got {res['rows']}")
+                        f"{label}: expected {expected} rows restored, got {got}")
             else:
-                if res["rows"] != 0:
+                if res["rows"] != 0 or res["vtries"] != 0:
                     failures.append(
                         f"{label}: should have been discarded but restored "
-                        f"{res['rows']} rows")
+                        f"{res['rows'] or res['vtries']} rows")
                 if not res["playable"]:
                     failures.append(f"{label}: discarded save left the board unplayable")
             # A board is either in play or finished, never both and never neither.

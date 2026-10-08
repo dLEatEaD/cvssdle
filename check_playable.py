@@ -43,52 +43,79 @@ def main() -> None:
               localStorage.clear();
               startDaily();
               const out = { answer: DAILY.puzzle.score, practice: PRACTICE.length };
-              const inp = document.getElementById('guess');
-              const gb = document.getElementById('btn-guess');
+              const sb = document.getElementById('btn-submit-vector');
+              const pick = (k, code) => {
+                const row = [...document.querySelectorAll('.metric-row')]
+                              [HINT_ORDER.indexOf(k)];
+                const label = METRIC_NAMES[k][1][code];
+                [...row.querySelectorAll('.metric-opt')]
+                  .find(o => o.textContent === label).click();
+              };
 
-              // A deliberate low guess must report "higher".
-              inp.value = '0.5'; gb.click();
-              out.lowFeedback = document.querySelector('.row:not(.empty) .feedback').textContent;
-              out.hintsAfterOne = document.querySelectorAll('.hint.revealed').length;
+              // Nothing is pre-selected, and an incomplete vector is refused.
+              out.freshPicked = HINT_ORDER.filter(k => vectorPick[k]).length;
+              out.freshDisabled = sb.disabled;
+              sb.click();
+              out.rowsAfterEmptySubmit = document.querySelectorAll('.vtry').length;
 
-              // A duplicate must be rejected without consuming a turn.
-              inp.value = '0.5'; gb.click();
-              out.rowsAfterDuplicate = document.querySelectorAll('.row:not(.empty)').length;
+              // A deliberately wrong vector: right everywhere but Attack Vector.
+              const ans = parseVector();
+              for (const k of HINT_ORDER) pick(k, ans[k]);
+              const wrongAV = Object.keys(METRIC_NAMES.AV[1])
+                                .find(c => c !== ans.AV);
+              pick('AV', wrongAV);
+              out.readout = document.getElementById('vector-score').textContent;
+              sb.click();
+              out.rowsAfterOne = document.querySelectorAll('.vtry').length;
+              out.countText = document.querySelector('.vtry .vtry-count').textContent;
+              out.hintsDuringPlay = document.querySelectorAll('.hint.revealed').length;
+              out.markedDuringPlay = [...document.querySelectorAll('.vcell')]
+                .filter(c => /hit|miss/.test(c.className)).length;
+              out.finishedEarly = !document.getElementById('result').hidden;
 
-              // Out of range must also be rejected.
-              inp.value = '99'; gb.click();
-              out.rowsAfterOutOfRange = document.querySelectorAll('.row:not(.empty)').length;
-
-              // The correct answer must win.
-              inp.value = DAILY.puzzle.score.toFixed(1); gb.click();
+              // The correct vector must win.
+              pick('AV', ans.AV);
+              sb.click();
               out.finished = !document.getElementById('result').hidden;
               out.heading = document.querySelector('#result h2').textContent;
               out.quip = (document.querySelector('.quip') || {}).textContent || '';
               out.allHints = document.querySelectorAll('.hint.revealed').length;
               out.link = document.getElementById('answer-link').href;
+              out.markedAfterEnd = [...document.querySelectorAll('.vcell')]
+                .filter(c => /hit|miss/.test(c.className)).length;
 
               // Practice must reset the board.
               startPractice();
-              out.practiceRows = document.querySelectorAll('.row:not(.empty)').length;
+              out.practiceTries = document.querySelectorAll('.vtry').length;
               out.practiceHints = document.querySelectorAll('.hint.revealed').length;
-              out.practiceInput = document.getElementById('guess').value;
+              out.practicePicked = HINT_ORDER.filter(k => vectorPick[k]).length;
               return out;
             }"""
         )
 
         checks = [
-            ("low guess reports higher", "HIGHER" in probe["lowFeedback"].upper()),
-            ("one hint after one guess", probe["hintsAfterOne"] == 1),
-            ("duplicate guess rejected", probe["rowsAfterDuplicate"] == 1),
-            ("out-of-range guess rejected", probe["rowsAfterOutOfRange"] == 1),
-            ("correct answer finishes the round", probe["finished"]),
+            ("nothing is pre-selected", probe["freshPicked"] == 0),
+            ("submit is disabled until all eight are picked", probe["freshDisabled"]),
+            ("an empty vector cannot be submitted",
+             probe["rowsAfterEmptySubmit"] == 0),
+            ("the live readout is a band, not a score",
+             not any(c.isdigit() for c in probe["readout"])),
+            ("a wrong vector records an attempt", probe["rowsAfterOne"] == 1),
+            ("the attempt reports a count", "7" in probe["countText"]),
+            ("a 7-of-8 attempt does not end the game", not probe["finishedEarly"]),
+            ("metrics stay hidden during play", probe["hintsDuringPlay"] == 0),
+            ("attempts are not marked up during play",
+             probe["markedDuringPlay"] == 0),
+            ("the correct vector finishes the round", probe["finished"]),
             ("a verdict heading is shown", bool(probe["heading"].strip())),
             ("a quip is shown", bool(probe["quip"].strip())),
             ("all 8 metrics revealed at the end", probe["allHints"] == 8),
+            ("attempts are marked up once the game ends",
+             probe["markedAfterEnd"] > 0),
             ("answer links to NVD", probe["link"].startswith("https://nvd.nist.gov/")),
-            ("practice clears the rows", probe["practiceRows"] == 0),
+            ("practice clears the attempts", probe["practiceTries"] == 0),
             ("practice clears the hints", probe["practiceHints"] == 0),
-            ("practice clears the input", probe["practiceInput"] == ""),
+            ("practice clears the selection", probe["practicePicked"] == 0),
             ("practice pool is non-empty", probe["practice"] > 0),
         ]
         failures = [name for name, ok in checks if not ok]

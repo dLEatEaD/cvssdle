@@ -38,15 +38,38 @@ def main() -> None:
     blob = (HERE / "puzzles.daily.enc").read_bytes()
     pool = json.loads(AESGCM(key).decrypt(blob[:12], blob[12:], None))
 
-    # No daily answer other than today's may appear. Match on CVE id and on the
-    # full description; a shared prefix is not a leak, since split_pool.py keeps
-    # same-advisory CVEs in one pool.
+    # No daily answer other than today's may appear. The id check is absolute:
+    # a future CVE id in the page is a leak however it got there.
+    #
+    # The description check has to allow one case. Vendors file several CVEs
+    # from a single advisory with byte-identical descriptions - Oracle WebLogic
+    # and Cisco IOS do it routinely - and split_pool.py deliberately keeps such
+    # a group together in one pool. When one of them is today's puzzle, its
+    # twins' descriptions are necessarily in the page, because they are the same
+    # string as today's. That reveals nothing: the player sees one description
+    # and cannot tell it maps to more than one CVE. Treating it as a leak took
+    # the daily publish down for a day, so the comparison is now against
+    # descriptions that actually differ from today's.
     leaked = [
         p["id"] for p in pool
-        if p["id"] != today["id"] and (p["id"] in built or p["desc"] in built)
+        if p["id"] != today["id"]
+        and (p["id"] in built
+             or (p["desc"] != today["desc"] and p["desc"] in built))
     ]
     if leaked:
         sys.exit(f"FAIL: {len(leaked)} future answers leaked, e.g. {leaked[:5]}")
+
+    # Report the twins rather than silently tolerating them. They are not a
+    # leak, but a group that also shares a score is the same puzzle served on
+    # two different days, which is a content problem worth seeing in the log.
+    twins = [p["id"] for p in pool
+             if p["id"] != today["id"] and p["desc"] == today["desc"]]
+    if twins:
+        same_score = [p["id"] for p in pool
+                      if p["id"] in twins and p.get("score") == today.get("score")]
+        print(f"NOTE: today's description is shared with {len(twins)} other pool "
+              f"entries ({', '.join(twins[:4])})"
+              + (f"; {len(same_score)} also share its score" if same_score else ""))
 
     # A practice puzzle sharing an advisory with a daily would telegraph it.
     straddle = {p["desc"][:60] for p in pool} & {p["desc"][:60] for p in practice}
