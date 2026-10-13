@@ -67,5 +67,8 @@ jobs:
       - name: Verify vector mode
         run: python3 check_vector.py
 
+      - name: Verify the end-of-round breakdown is true
+        run: python3 check_explain.py
+
       - name: Verify one mode per puzzle
         run: python3 check_modes.py

@@ -329,6 +329,40 @@ button.primary:disabled { opacity: .4; cursor: not-allowed; box-shadow: none; }
   font-family: Consolas, "Courier New", Courier, monospace;
 }
 .result a { color: var(--cp-link); font-size: 0.85rem; }
+
+/* ---- vector breakdown ----
+   The raw vector string is the moment a player could learn something and is
+   otherwise just a wall of letters. Spell it out, and show how much each
+   metric is actually worth. */
+.why {
+  text-align: left; margin: 12px 0 4px;
+  border: 1px solid var(--cp-border); border-radius: 9px;
+  background: var(--cp-surface-soft); overflow: hidden;
+}
+.why-head {
+  font-size: 0.74rem; font-weight: 700; color: var(--cp-text);
+  padding: 9px 11px; border-bottom: 1px solid var(--cp-border);
+}
+.why-head b { color: var(--cp-accent); }
+.why-row {
+  display: grid; grid-template-columns: 1fr auto; gap: 6px 10px;
+  align-items: baseline; padding: 6px 11px; font-size: 0.72rem;
+  border-bottom: 1px solid var(--cp-border);
+}
+.why-row:last-child { border-bottom: 0; }
+.why-metric { color: var(--cp-text-muted); }
+.why-metric b { color: var(--cp-text); font-weight: 650; }
+.why-alt {
+  color: var(--cp-text-muted); font-size: 0.68rem; white-space: nowrap;
+  font-family: Consolas, "Courier New", Courier, monospace;
+}
+.why-alt i { font-style: normal; color: var(--cp-accent); font-weight: 700; }
+/* Sensitivity bar: how far this one metric can move the score. */
+.why-bar {
+  grid-column: 1 / -1; height: 3px; border-radius: 2px;
+  background: var(--cp-border); overflow: hidden;
+}
+.why-bar i { display: block; height: 100%; background: var(--cp-accent); }
 .btn-row { display: flex; gap: 8px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
 button.ghost {
   background: var(--cp-surface);
@@ -940,6 +974,114 @@ function severityFor(score) {
   if (score < 7) return "Medium";
   if (score < 9) return "High";
   return "Critical";
+}
+
+/* ---------- why the score is the score ----------
+   A vector string is only a lesson if you can read it. For each metric this
+   reports the plain-English value and what the score would become at whichever
+   alternative moves it furthest - computed with the same scoreVector() the game
+   scores with, so the explanation can never drift from the rubric.
+
+   The swing is the teaching bit. On CVE-2020-3566 (8.6) every impact metric is
+   None except Availability, which swings the full 8.6: it is a denial of
+   service and nothing else, and seeing that is more useful than being told the
+   number.
+
+   Ties go to the furthest alternative in the metric's own ordering. They happen
+   when the 10.0 cap swallows the difference, and "High scores 10.0 even as
+   None" is the lesson there - "even as Low" would just look like a rounding
+   quirk. */
+function explainVector(v) {
+  const base = scoreVector(v);
+  const rows = HINT_ORDER.map((k) => {
+    const [label, names] = METRIC_NAMES[k];
+    const codes = Object.keys(names);
+    const cur = codes.indexOf(v[k]);
+    let far = null, farScore = base, farSwing = -1, farDist = -1;
+    for (const code of codes) {
+      if (code === v[k]) continue;
+      const alt = { ...v, [k]: code };
+      const s = scoreVector(alt);
+      const swing = Math.abs(s - base);
+      const dist = Math.abs(codes.indexOf(code) - cur);
+      if (swing > farSwing + 1e-9 ||
+          (swing > farSwing - 1e-9 && dist > farDist)) {
+        far = code; farScore = s; farSwing = swing; farDist = dist;
+      }
+    }
+    return {
+      key: k,
+      label,
+      value: names[v[k]] || v[k],
+      altValue: far ? (names[far] || far) : null,
+      altScore: farScore,
+      swing: Math.round(Math.abs(farScore - base) * 10) / 10,
+    };
+  });
+  const widest = rows.reduce((a, b) => (b.swing > a.swing ? b : a), rows[0]);
+  return { base, rows, widest };
+}
+
+function renderWhy(v) {
+  const { base, rows, widest } = explainVector(v);
+  const box = document.createElement("div");
+  box.className = "why";
+  box.id = "why";
+
+  const head = document.createElement("div");
+  head.className = "why-head";
+  // Name the dominant lever in words. Set as text plus one bold span rather
+  // than spliced markup, so puzzle-derived labels can never inject HTML.
+  head.textContent = "Why " + base.toFixed(1) + "? ";
+  const strong = document.createElement("b");
+  strong.textContent = widest.swing > 0
+    ? widest.label + " moves it most \u2014 " + widest.value +
+      " rather than " + widest.altValue + " is worth " +
+      widest.swing.toFixed(1) + " points."
+    : "Every metric here pulls about the same weight.";
+  head.appendChild(strong);
+  box.appendChild(head);
+
+  const max = Math.max(...rows.map((r) => r.swing), 0.1);
+  for (const r of rows) {
+    const row = document.createElement("div");
+    row.className = "why-row";
+
+    const left = document.createElement("span");
+    left.className = "why-metric";
+    left.textContent = r.label + ": ";
+    const b = document.createElement("b");
+    b.textContent = r.value;
+    left.appendChild(b);
+    row.appendChild(left);
+
+    const alt = document.createElement("span");
+    alt.className = "why-alt";
+    if (r.altValue) {
+      // Still name the alternative when the score does not move. A zero swing
+      // usually means the 10.0 cap is absorbing it, and "no change" would read
+      // as "this metric does not matter" - the opposite of the lesson.
+      alt.textContent = "\u2192 ";
+      const i = document.createElement("i");
+      i.textContent = r.altScore.toFixed(1);
+      alt.appendChild(i);
+      alt.appendChild(document.createTextNode(
+        (r.swing > 0 ? " as " : " even as ") + r.altValue));
+    } else {
+      alt.textContent = "no alternative";
+    }
+    row.appendChild(alt);
+
+    const bar = document.createElement("div");
+    bar.className = "why-bar";
+    const fill = document.createElement("i");
+    fill.style.width = Math.max(2, (r.swing / max) * 100) + "%";
+    bar.appendChild(fill);
+    row.appendChild(bar);
+
+    box.appendChild(row);
+  }
+  return box;
 }
 
 function renderHints() {
@@ -1948,6 +2090,13 @@ function renderResult() {
   // javascript: URL even if a malformed record slips through the build.
   $("answer-severity").textContent = puzzle.severity;
   $("answer-vector").textContent = puzzle.vector;
+  // Translate the vector the player just saw into something they can learn
+  // from. Inserted after the string itself so the raw form stays available to
+  // anyone who wants to copy it.
+  const prevWhy = $("why");
+  if (prevWhy) prevWhy.remove();
+  const av = $("answer-vector");
+  av.parentNode.insertBefore(renderWhy(parseVector()), av.nextSibling);
   const link = $("answer-link");
   link.href = /^https:\/\/nvd\.nist\.gov\//.test(puzzle.url) ? puzzle.url : "#";
   link.textContent = puzzle.id + " on NVD \u2192";

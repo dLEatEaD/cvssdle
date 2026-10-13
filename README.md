@@ -133,6 +133,30 @@ candidates rather than 1, which keeps the "your picks have consequences"
 feedback without handing the answer over. The exact score still appears on
 every submitted attempt, where it costs a try, and on the final reveal.
 
+**The result card explains the vector, it does not just print it.** The moment
+the answer appears is the only moment a player is guaranteed to be looking at a
+full vector string, and a bare `CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:N/I:N/A:H`
+is a wall of letters. So every metric is spelled out alongside what the score
+would have been at whichever alternative moves it furthest, with a bar showing
+how much each one is worth.
+
+The counterfactual is the teaching bit, because it shows where the number
+actually comes from. On CVE-2020-3566 (8.6) every impact metric is None except
+Availability, which swings the full 8.6 — `→ 0.0 as None`. It is a denial of
+service and nothing else, and reading that off the breakdown beats being told
+the number. Ties go to the furthest alternative, which is what surfaces the
+10.0 cap: on a Critical with all three impacts High, Confidentiality reads
+`→ 10.0 even as None`.
+
+Those figures are computed with the same `scoreVector()` the game scores with,
+so they cannot disagree with the rubric the game grades on. `check_explain.py`
+re-derives every claim — each alternative's score, that it really is the
+furthest-moving one, the swing, and the metric named in the heading — from a
+*separate* CVSS v3.1 implementation written from the spec, for all 751 puzzles.
+Checking the page against its own calculator would only prove self-consistency;
+a confidently wrong explanation is worse than none in a tool people use to
+learn the rubric.
+
 Vector mode exists because score mode is solvable without knowing any CVSS. The
 answer carries only ~3.4 bits of entropy: 9.8 alone wins 36% of the time, and a
 plain binary search over the observed scores wins **100%** of the time in about
@@ -216,6 +240,7 @@ did by shipping all 400 puzzles and selecting one client-side. Instead:
 | `check_social.py` | CI gate: partial credit and challenge links. |
 | `check_cvss.py` | CI gate: the in-game CVSS calculator must match NVD. |
 | `check_vector.py` | CI gate: vector mode stays opt-in and never leaks the answer. |
+| `check_explain.py` | CI gate: the end-of-round vector breakdown must be true. |
 | `check_modes.py` | CI gate: one mode per puzzle, and honest per-mode stats. |
 | `check_workflows.py` | CI gate: workflow steps must pass the secrets their scripts need. |
 | `check_schedule.py` | CI gate: cron, countdown and EPOCH must agree. |
