@@ -32,6 +32,10 @@ quietly drills CVSS fluency.
   missed weekdays, so it continues the streak. Weekend play counts and
   never hurts, it just isn't required.
 - Shareable emoji result grid, Wordle-style.
+- **Mint a stele**: the result as a plaque built to be decoded by someone with
+  no context at all — the score drawn on a scale that defines itself, and the
+  eight metrics drawn as the shape of the rubric. Self-teaching, so a share
+  converts a stranger rather than only landing with people who already play.
 - **Partial credit**: running out of guesses while within half a point is
   reported as a near miss rather than a flat loss. It is deliberately *not* a
   win — win rate and streaks keep meaning exactly what they say — but landing
@@ -157,6 +161,45 @@ Checking the page against its own calculator would only prove self-consistency;
 a confidently wrong explanation is worse than none in a tool people use to
 learn the rubric.
 
+**The stele.** The emoji grid is a fine share and a poor artifact. It is
+*opaque* — a row of coloured squares teaches a stranger nothing — so it only
+ever lands with people who already play, and it is pasted into apps that will
+not outlive the decade. `Mint stele` produces the opposite: a PNG plaque built
+to be decoded by someone with no context at all, in three layers that each
+explain the next.
+
+1. **Magnitude** — a 10×10 grid with `round(score * 10)` cells filled. It
+   defines its own scale: *86 of 100* is legible without being told, and
+   without numerals. The decimal sits beside it as the second language.
+2. **Eight dimensions** — one row per metric, drawn as N slots with the chosen
+   one filled, so the shape of the rubric is recoverable: this dimension has
+   four states and the first was taken, that one has two. Nothing has to say
+   "CVSS v3.1" for that to read.
+3. **Consequence** — each row carries its swing bar and the score the vector
+   would reach at its furthest alternative. Eight `(state, states, delta)`
+   triples are enough to start reverse-engineering how the magnitude is built.
+
+English labels sit alongside the glyph layer, Rosetta-style. The point is not
+to drop the words — it is that losing them should cost less than everything.
+The practical payoff is the same as the archaeological one: a share that
+explains itself can convert a stranger, where one that needs prior knowledge
+can only preach to people who already have it.
+
+The palette is fixed rather than the page's CSS variables, because an object
+meant to outlast the session should not change colour with a theme toggle.
+
+`check_stele.py` holds it to the same independent CVSS v3.1 calculator as
+`check_explain.py`, across all 751 puzzles: the filled-cell count really is
+`round(score * 10)`, each metric draws exactly as many slots as it has values
+with the filled one at the true index, and every "would be X as Y" is real. It
+also gates the things that make an image safe to hand to a stranger — it is
+well-formed XML, contains no script, `foreignObject` or external reference (so
+it rasterises to a canvas without tainting it and carries everything it needs),
+it survives a deliberately hostile vendor/product/id record without gaining a
+single element, and it is not mintable before the round is decided. Escaping is
+not theoretical: real pool records contain `&`, and splicing them unescaped
+breaks the artifact outright.
+
 Vector mode exists because score mode is solvable without knowing any CVSS. The
 answer carries only ~3.4 bits of entropy: 9.8 alone wins 36% of the time, and a
 plain binary search over the observed scores wins **100%** of the time in about
@@ -241,6 +284,7 @@ did by shipping all 400 puzzles and selecting one client-side. Instead:
 | `check_cvss.py` | CI gate: the in-game CVSS calculator must match NVD. |
 | `check_vector.py` | CI gate: vector mode stays opt-in and never leaks the answer. |
 | `check_explain.py` | CI gate: the end-of-round vector breakdown must be true. |
+| `check_stele.py` | CI gate: the minted stele must be inert, self-contained and true. |
 | `check_modes.py` | CI gate: one mode per puzzle, and honest per-mode stats. |
 | `check_workflows.py` | CI gate: workflow steps must pass the secrets their scripts need. |
 | `check_schedule.py` | CI gate: cron, countdown and EPOCH must agree. |

@@ -70,5 +70,8 @@ jobs:
       - name: Verify the end-of-round breakdown is true
         run: python3 check_explain.py
 
+      - name: Verify the stele is inert and true
+        run: python3 check_stele.py
+
       - name: Verify one mode per puzzle
         run: python3 check_modes.py

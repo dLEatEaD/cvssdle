@@ -1013,6 +1013,11 @@ function explainVector(v) {
       key: k,
       label,
       value: names[v[k]] || v[k],
+      // Slot position and count, for the stele's glyph layer: "this dimension
+      // has four states and the first one was chosen" is the structure a
+      // reader with no CVSS context can actually recover.
+      states: codes.length,
+      index: cur,
       altValue: far ? (names[far] || far) : null,
       altScore: farScore,
       swing: Math.round(Math.abs(farScore - base) * 10) / 10,
@@ -1198,6 +1203,243 @@ function shareText() {
       (won ? guesses.length : (isNearMiss() ? "\u00bd" : "X")) + "/" + MAX_GUESSES;
   const url = challengeUrl();
   return head + "\n" + shareGrid() + (url ? "\n" + url : "");
+}
+
+/* ---------- the stele ----------
+   The emoji grid is a fine share and a terrible artifact. It is opaque - a row
+   of coloured squares teaches a stranger nothing - so it only ever lands with
+   people who already play, and it is pasted into apps that will not outlive the
+   decade.
+
+   This is the opposite: the result as a plaque built to be decoded by someone
+   with no context at all. Three layers, each explaining the next.
+
+     1. Magnitude. A 10x10 grid with round(score*10) cells filled. It defines
+        its own scale - "75 of 100" is legible without being told, and without
+        numerals. The decimal sits beside it as the second language.
+     2. Eight dimensions. One row per metric, drawn as N slots with the chosen
+        one filled, so the shape of the rubric is recoverable: this dimension
+        has four states and the first was taken, that one has two. Nothing has
+        to say "CVSS v3.1" for that to be readable.
+     3. Consequence. Each row carries its swing bar and the score the vector
+        would reach at its furthest alternative. Eight (state, states, delta)
+        triples are enough to start reverse-engineering how the magnitude is
+        assembled.
+
+   English labels sit alongside the glyph layer, Rosetta-style. The point is
+   not to drop the words - it is that losing them costs less than everything.
+
+   The practical payoff is the same as the archaeological one: a share that
+   explains itself converts a stranger, where one that needs prior knowledge
+   can only ever preach to people who already have it. */
+
+/* A fixed stone palette, deliberately not the page's CSS variables. An object
+   meant to outlast the session should not change colour with a theme toggle. */
+const STELE = {
+  w: 840, pad: 56, cell: 20, gap: 4, pip: 16, pipGap: 6, row: 74,
+  bg: "#0b1220", plate: "#111a2b", line: "#243149",
+  ink: "#e8eef8", dim: "#7a8da8", accent: "#38bdf8",
+  sans: "Helvetica Neue, Helvetica, Arial, sans-serif",
+  mono: "Consolas, Menlo, Monaco, monospace",
+};
+const STELE_SEV = {
+  Critical: "#f87171", High: "#fb923c", Medium: "#fbbf24",
+  Low: "#4ade80", None: "#7a8da8",
+};
+
+/* Everything on the plaque is upstream data, and the plaque is the one artifact
+   that leaves the page. Escape it as XML rather than trusting the pool. */
+function xmlEscape(s) {
+  return String(s).replace(/[<>&"']/g, (c) => ({
+    "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;",
+  }[c]));
+}
+
+/* How the round went, in the fewest words that still mean something. */
+function steleOutcome() {
+  if (practiceMode) return "PRACTICE";
+  if (vectorMode()) {
+    return won ? "VECTOR " + vectorTries.length + "/" + VECTOR_TRIES
+               : "VECTOR UNSOLVED";
+  }
+  if (won) return "SOLVED IN " + guesses.length;
+  return isNearMiss() ? "WITHIN HALF A POINT" : "UNSOLVED";
+}
+
+function buildStele() {
+  const S = STELE;
+  const inner = S.w - S.pad * 2;
+  const { base, rows } = explainVector(parseVector());
+  const sev = severityFor(base);
+  const sevColor = STELE_SEV[sev] || S.ink;
+  const marks = Math.round(base * 10);
+  const o = [];
+  const t = (x, y, str, opts) => {
+    const a = opts || {};
+    o.push('<text x="' + x + '" y="' + y + '"' +
+      ' font-family="' + xmlEscape(a.mono ? S.mono : S.sans) + '"' +
+      ' font-size="' + (a.size || 15) + '"' +
+      ' fill="' + (a.fill || S.dim) + '"' +
+      (a.weight ? ' font-weight="' + a.weight + '"' : "") +
+      (a.anchor ? ' text-anchor="' + a.anchor + '"' : "") +
+      (a.spacing ? ' letter-spacing="' + a.spacing + '"' : "") +
+      ">" + xmlEscape(str) + "</text>");
+  };
+  const rule = (y) => o.push('<rect x="' + S.pad + '" y="' + y + '" width="' +
+    inner + '" height="1" fill="' + S.line + '"/>');
+
+  /* --- provenance ------------------------------------------------- */
+  t(S.pad, 60, "CVSSDLE", { size: 13, spacing: 4, fill: S.accent, weight: 700 });
+  t(S.w - S.pad, 60, steleOutcome(), { size: 13, spacing: 2, anchor: "end" });
+  t(S.pad, 106, puzzle.id, { size: 34, fill: S.ink, mono: true, weight: 700 });
+  t(S.pad, 134, puzzle.vendor + " \u00b7 " + puzzle.product +
+    " \u00b7 disclosed " + String(puzzle.published).slice(0, 4), { size: 15 });
+  rule(162);
+
+  /* --- layer one: the magnitude, on a scale it defines itself ------ */
+  t(S.pad, 200, "MAGNITUDE", { size: 12, spacing: 3 });
+  const gridTop = 220;
+  const step = S.cell + S.gap;
+  for (let i = 0; i < 100; i++) {
+    const cx = S.pad + (i % 10) * step;
+    const cy = gridTop + Math.floor(i / 10) * step;
+    const on = i < marks;
+    o.push('<rect x="' + cx + '" y="' + cy + '" width="' + S.cell +
+      '" height="' + S.cell + '" rx="2"' +
+      (on ? ' fill="' + sevColor + '"'
+          : ' fill="none" stroke="' + S.line + '" stroke-width="1.5"') + "/>");
+  }
+  const gridW = 10 * S.cell + 9 * S.gap;
+  const gx = S.pad + gridW + 48;
+  t(gx, gridTop + 90, base.toFixed(1),
+    { size: 84, fill: sevColor, weight: 700, mono: true });
+  t(gx, gridTop + 126, sev.toUpperCase(),
+    { size: 17, spacing: 3, fill: S.ink, weight: 700 });
+  t(gx, gridTop + 158, marks + " of 100", { size: 14, mono: true });
+  const gridBottom = gridTop + 10 * S.cell + 9 * S.gap;
+  rule(gridBottom + 36);
+
+  /* --- layers two and three: the dimensions and what they cost ----- */
+  let y = gridBottom + 74;
+  t(S.pad, y, "EIGHT DIMENSIONS", { size: 12, spacing: 3 });
+  t(S.w - S.pad, y, "filled = chosen \u00b7 bar = how far it moves the magnitude",
+    { size: 12, anchor: "end" });
+  y += 24;
+
+  const maxSwing = Math.max(...rows.map((r) => r.swing), 0.1);
+  for (const r of rows) {
+    t(S.pad, y + 18, r.label, { size: 13 });
+    t(S.pad + 210, y + 18, r.value, { size: 17, fill: S.ink, weight: 700 });
+    t(S.w - S.pad, y + 18, r.altValue
+      ? "\u2192 " + r.altScore.toFixed(1) + " as " + r.altValue
+      : "no alternative",
+      { size: 14, mono: true, anchor: "end" });
+
+    for (let i = 0; i < r.states; i++) {
+      const px = S.pad + i * (S.pip + S.pipGap);
+      const on = i === r.index;
+      o.push('<rect x="' + px + '" y="' + (y + 32) + '" width="' + S.pip +
+        '" height="' + S.pip + '" rx="2"' +
+        (on ? ' fill="' + S.accent + '"'
+            : ' fill="none" stroke="' + S.line + '" stroke-width="1.5"') + "/>");
+    }
+
+    o.push('<rect x="' + S.pad + '" y="' + (y + 60) + '" width="' + inner +
+      '" height="4" rx="2" fill="' + S.line + '"/>');
+    const fill = Math.max(2, Math.round((r.swing / maxSwing) * inner));
+    o.push('<rect x="' + S.pad + '" y="' + (y + 60) + '" width="' + fill +
+      '" height="4" rx="2" fill="' + S.accent + '"/>');
+    y += S.row;
+  }
+
+  /* --- where and when this came from ------------------------------ */
+  y += 10;
+  rule(y);
+  t(S.pad, y + 30, puzzle.vector, { size: 13, mono: true });
+  const stamp = practiceMode
+    ? "practice"
+    : "no. " + puzzleNumber() + " \u00b7 " + DAILY.date;
+  t(S.w - S.pad, y + 30, stamp, { size: 13, mono: true, anchor: "end" });
+  const home = shareUrl() || "cvssdle";
+  t(S.pad, y + 56, home, { size: 13, mono: true, fill: S.accent });
+  const h = y + 86;
+
+  /* No script, no foreignObject, no external reference: a data URL has to
+     rasterise to a canvas without tainting it, and an artifact should not
+     depend on anything it cannot carry. */
+  return '<svg xmlns="http://www.w3.org/2000/svg" width="' + S.w +
+    '" height="' + h + '" viewBox="0 0 ' + S.w + " " + h + '">' +
+    '<rect width="' + S.w + '" height="' + h + '" fill="' + S.bg + '"/>' +
+    '<rect x="16" y="16" width="' + (S.w - 32) + '" height="' + (h - 32) +
+    '" rx="14" fill="' + S.plate + '" stroke="' + S.line + '"/>' +
+    o.join("") + "</svg>";
+}
+
+/* Rasterise the plaque. Via a data URL rather than a blob so it works the same
+   on file://, and so the canvas is never tainted. */
+function steleToPng() {
+  return new Promise((resolve, reject) => {
+    const svg = buildStele();
+    const img = new Image();
+    img.onload = () => {
+      // 2x, so the thing is still sharp when someone zooms into it.
+      const c = document.createElement("canvas");
+      c.width = img.width * 2;
+      c.height = img.height * 2;
+      const ctx = c.getContext("2d");
+      ctx.scale(2, 2);
+      ctx.drawImage(img, 0, 0);
+      c.toBlob((b) => (b ? resolve(b) : reject(new Error("no blob"))), "image/png");
+    };
+    img.onerror = () => reject(new Error("svg did not rasterise"));
+    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+  });
+}
+
+function steleName() {
+  const who = practiceMode ? "practice" : String(puzzleNumber());
+  return "cvssdle-" + who + "-" + puzzle.id + ".png";
+}
+
+async function mintStele() {
+  let blob;
+  try {
+    blob = await steleToPng();
+  } catch {
+    toast("Could not mint the stele here");
+    return;
+  }
+  const file = new File([blob], steleName(), { type: "image/png" });
+
+  // On a phone the share sheet is the whole point - it puts the image straight
+  // into the conversation. Desktop has no equivalent, so prefer the clipboard
+  // there and fall back to a download, which always works.
+  const isTouch = matchMedia("(pointer: coarse)").matches;
+  if (isTouch && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] });
+      return;
+    } catch { /* cancelled or unsupported - fall through */ }
+  }
+  try {
+    if (navigator.clipboard && window.ClipboardItem && window.isSecureContext) {
+      await navigator.clipboard.write([
+        new ClipboardItem({ "image/png": blob }),
+      ]);
+      toast("Stele copied \u2014 paste it anywhere");
+      return;
+    }
+  } catch { /* fall through to download */ }
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = steleName();
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  toast("Stele saved");
 }
 
 /* ---------- challenge links ---------- */
@@ -2079,6 +2321,7 @@ function renderResult() {
     '<a id="answer-link" target="_blank" rel="noopener"></a>' +
     '<div class="btn-row">' +
       '<button class="primary" id="btn-share">Share result</button>' +
+      '<button class="ghost" id="btn-stele">Mint stele</button>' +
       '<button class="ghost" id="btn-challenge">Challenge</button>' +
       '<button class="ghost" id="btn-another">Practice again</button>' +
     "</div>" +
@@ -2136,6 +2379,9 @@ function renderResult() {
     box.select();
     toast("Press \u2318C to copy");
   };
+  const steleBtn = $("btn-stele");
+  if (steleBtn) steleBtn.onclick = mintStele;
+
   const chBtn = $("btn-challenge");
   if (chBtn) {
     chBtn.onclick = async () => {
