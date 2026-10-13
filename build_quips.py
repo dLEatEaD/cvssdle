@@ -446,6 +446,148 @@ VECTOR_LOSS = ("Vector unsolved", [
 ])
 
 
+# Grades for a vector game that ran out of attempts. Keyed by the best attempt's
+# metric count, so every game ends with a result rather than a flat "unsolved".
+# Seven of eight is a single judgement call away from the published vector and
+# deserves to be told apart from two of eight; reporting both as a loss is what
+# made the mode feel arbitrary and unrewarding to play.
+VECTOR_GRADES = {
+    7: ("One metric out \U0001F91E", [
+        "Seven of eight. A single judgement call between you and NVD.",
+        "One metric apart. That is a disagreement, not a failure.",
+        "Seven correct. Analysts argue over margins smaller than this.",
+        "So close the published vector barely wins the argument.",
+        "One metric. You read this vulnerability almost exactly right.",
+        "Seven of eight is a real triage outcome, not a miss.",
+        "That is the vector, give or take one honest reading.",
+        "One away. The kind of result that stings precisely because it is good.",
+        "Seven correct metrics is more than most people manage cold.",
+        "A single metric held the line. Everything else you nailed.",
+        "You built the vulnerability correctly and lost on a detail.",
+        "Seven of eight. That would survive peer review most days.",
+        "One metric out, and probably the one nobody agrees on anyway.",
+        "Painfully close. Also genuinely good work.",
+        "Seven right. The remaining one is the lesson, and it is below.",
+        "That is a strong read with one blind spot.",
+        "One metric between you and a perfect vector. Take the near-miss.",
+        "Seven of eight on a cold read is respectable by any standard.",
+        "The advisory told you seven things clearly and one not at all.",
+        "A single wrong metric. Worth knowing which - it is marked below.",
+        "Seven correct. You understood the vulnerability; the rubric quibbled.",
+        "That is about as close as you get without being right.",
+        "One out. Frustrating, and still a good day's scoring.",
+        "Seven of eight. The last one is usually Scope. It usually is.",
+        "You were right about the bug and wrong about one adjective.",
+        "A near-perfect vector. One metric to go and look at.",
+        "Seven correct metrics, one disputed. That is real analysis.",
+        "Close enough that the severity band almost certainly matched.",
+        "One metric adrift on an otherwise clean read.",
+        "Seven of eight. Come back tomorrow and take the eighth.",
+    ]),
+    6: ("Six of eight \U0001F44D", [
+        "Six correct. The shape of this vulnerability was clear to you.",
+        "Six of eight. Solid reading with a couple of gaps.",
+        "Two metrics out. The core of the vector was right.",
+        "Six right. That is a working understanding of the bug.",
+        "You got the vulnerability. Two details got away.",
+        "Six of eight on a cold advisory is decent work.",
+        "Two metrics apart from NVD. Worth seeing which, below.",
+        "A good read with two judgement calls going the other way.",
+        "Six correct. The severity call was probably still right.",
+        "Two off. That is a normal day of real triage.",
+        "Six of eight. The vector was mostly yours.",
+        "You read the exploit correctly and the impact loosely.",
+        "Six right, two debatable. Entirely respectable.",
+        "The main thrust was correct; the edges were not.",
+        "Six of eight. Better than the prior, which is the bar.",
+        "Two metrics out of eight. Fine margin, real result.",
+        "You had this one broadly right.",
+        "Six correct. The two you missed are marked below.",
+        "A sound reading that lost a couple of specifics.",
+        "Six of eight. The advisory was thinner than the rubric needed.",
+        "Two wrong. Both probably inferable in hindsight.",
+        "Good instincts, slightly loose on the detail.",
+        "Six right. Not a win, definitely not a waste.",
+        "You understood what the attacker gets. Mostly.",
+        "Six of eight is a pass in any sensible marking scheme.",
+        "Two metrics between you and the published vector.",
+        "Respectable. The gaps are specific and fixable.",
+        "Six correct on eight simultaneous calls is not nothing.",
+        "You were in the right territory throughout.",
+        "Six of eight. Check which two below and it sticks.",
+    ]),
+    4: ("Four of eight", [
+        "Half right. The vulnerability was harder to read than it looked.",
+        "Four of eight. Some of it landed.",
+        "Half the vector. The advisory did not give much away.",
+        "Four correct. Worth reading the marked board below.",
+        "Half and half. This one hid its impact well.",
+        "Four of eight - roughly what the description supports.",
+        "Some solid calls, some guesses. Normal for a thin advisory.",
+        "Half the metrics. The other half are worth a look.",
+        "Four right. This vulnerability does not describe itself clearly.",
+        "You got the easy half. The hard half is below.",
+        "Four of eight. More signal than noise, just.",
+        "Half correct on eight unknowns. The gaps are marked.",
+        "Some of this was guessable; some genuinely was not.",
+        "Four right. The impact metrics usually cause this.",
+        "Half the vector. Tomorrow's will read more clearly.",
+        "Four of eight. The rubric wanted more than the text offered.",
+        "A fair attempt at an unfairly vague advisory.",
+        "Half right, and the half you missed is the interesting half.",
+        "Four correct. Look at the board - the pattern is the lesson.",
+        "This one needed the CVE page, not the summary.",
+        "Four of eight. Partial credit, honestly earned.",
+        "Half. These are the ones worth reviewing properly.",
+        "Some right, some not. The marked board explains which.",
+        "Four correct metrics on a sparse description.",
+        "Half the vector, which is roughly what was knowable here.",
+        "Four of eight. Not your best read, not a disaster.",
+        "The description gave you about half of this one.",
+        "Four right. The missing ones are flagged below.",
+        "Middling. Worth a minute on the board before moving on.",
+        "Half correct. The other four are today's actual lesson.",
+    ]),
+    0: ("Tough one", [
+        "That vector went another way entirely. The board below shows how.",
+        "Few of these landed. Some advisories simply do not describe themselves.",
+        "A hard read. Worth looking at what the published vector claims.",
+        "Not today. The description and the rubric were barely talking.",
+        "This one fought you. The marked board is the useful part.",
+        "Low count, and probably not your fault - check the board.",
+        "The published vector disagrees with almost all of it.",
+        "A rough one. These are the puzzles worth reviewing.",
+        "Few correct. Read the board; this is where the learning is.",
+        "That advisory held its cards. Tomorrow will be kinder.",
+        "Not much landed. The vector below explains why.",
+        "A difficult vulnerability to score from the text available.",
+        "Low score, high lesson. The board is marked up.",
+        "This one needed the full NVD entry to call properly.",
+        "The rubric went somewhere you did not. Worth seeing where.",
+        "Few metrics right. Scope and complexity usually do this.",
+        "A bruising round. The marked attempts are the takeaway.",
+        "Not your round. The answer vector is below.",
+        "That one was genuinely hard to read.",
+        "Low count. Check which metrics never landed - it repeats.",
+        "The description undersold what this bug actually does.",
+        "Rough. These are the ones that teach the most, oddly.",
+        "Few right, and the published vector is worth arguing with.",
+        "A hard puzzle. Review the board and take the pattern forward.",
+        "Not close. Tomorrow is a different vulnerability.",
+        "That vector was not visible from the summary.",
+        "Low. Worth opening the NVD link and seeing the full entry.",
+        "Few landed. The marked board is doing the teaching today.",
+        "A tough advisory, honestly scored.",
+        "Not this one. The answer is below, and it is worth a read.",
+    ]),
+}
+
+
+def grade_for(hits: int) -> int:
+    """Lowest grade band at or below a metric count."""
+    return max(k for k in VECTOR_GRADES if k <= hits)
+
+
 def js_array(items: list[str], indent: str) -> str:
     return "\n".join(f"{indent}{json.dumps(s, ensure_ascii=False)}," for s in items)
 
@@ -463,6 +605,11 @@ def main() -> None:
         assert len(set(quips)) == len(quips), f"vector tier {n} has duplicates"
     assert len(VECTOR_LOSS[1]) >= REQUIRED, f"vector loss has {len(VECTOR_LOSS[1])}"
     assert len(set(VECTOR_LOSS[1])) == len(VECTOR_LOSS[1]), "vector loss has duplicates"
+    for band, (_, quips) in VECTOR_GRADES.items():
+        assert len(quips) >= REQUIRED, f"grade {band} has {len(quips)}"
+        assert len(set(quips)) == len(quips), f"grade {band} has duplicates"
+    # Every losing metric count must resolve to a band.
+    assert all(grade_for(h) in VECTOR_GRADES for h in range(8)), "grade gap"
     # The vector pools are indexed by attempt count, so they must cover every
     # try the game actually allows.
     assert set(VECTOR_TIERS) == {1, 2, 3, 4}, "vector tiers must cover 1-4 tries"
@@ -483,6 +630,16 @@ def main() -> None:
             f"    quips: [\n{js_array(quips, '      ')}\n    ],\n"
             f"  }},"
         )
+    # One entry per possible metric count 0-7, each pointing at its band.
+    grade_blocks = []
+    for hits in range(8):
+        title, quips = VECTOR_GRADES[grade_for(hits)]
+        grade_blocks.append(
+            f"  {{ /* {hits} of 8 */\n"
+            f"    title: {json.dumps(title, ensure_ascii=False)},\n"
+            f"    quips: [\n{js_array(quips, '      ')}\n    ],\n"
+            f"  }},"
+        )
     verdicts = (
         "const VERDICTS = {\n" + "\n".join(blocks) + "\n};\n\n"
         "const LOSS_QUIPS = [\n" + js_array(LOSS[1], "  ") + "\n];\n\n"
@@ -490,7 +647,10 @@ def main() -> None:
         "const VECTOR_VERDICTS = {\n" + "\n".join(vblocks) + "\n};\n\n"
         "const VECTOR_LOSS_QUIPS = [\n" + js_array(VECTOR_LOSS[1], "  ") + "\n];\n\n"
         "const VECTOR_LOSS_HEADING = " +
-        json.dumps(VECTOR_LOSS[0], ensure_ascii=False) + ";"
+        json.dumps(VECTOR_LOSS[0], ensure_ascii=False) + ";\n\n"
+        # Indexed 0-7 by the best attempt's metric count, so renderResult can
+        # look a grade up directly without repeating the banding rule.
+        "const VECTOR_GRADES = [\n" + "\n".join(grade_blocks) + "\n];"
     )
 
     text = TARGET.read_text()
@@ -499,18 +659,21 @@ def main() -> None:
         r"(?:\n\nconst NEAR_QUIPS = \[.*?\n\];)?"
         r"(?:\n\nconst VECTOR_VERDICTS = \{.*?\n\};\n\n"
         r"const VECTOR_LOSS_QUIPS = \[.*?\n\];\n\n"
-        r"const VECTOR_LOSS_HEADING = .*?;)?", re.S
+        r"const VECTOR_LOSS_HEADING = .*?;"
+        r"(?:\n\nconst VECTOR_GRADES = \[.*?\n\];)?)?", re.S
     )
     if not pattern.search(text):
         raise SystemExit("could not locate the VERDICTS / LOSS_QUIPS block")
     TARGET.write_text(pattern.sub(lambda _: verdicts, text, count=1))
 
     total = (sum(len(q) for _, q in TIERS.values()) + len(LOSS[1]) + len(NEAR[1])
-             + sum(len(q) for _, q in VECTOR_TIERS.values()) + len(VECTOR_LOSS[1]))
+             + sum(len(q) for _, q in VECTOR_TIERS.values()) + len(VECTOR_LOSS[1])
+             + sum(len(q) for _, q in VECTOR_GRADES.values()))
     print("Quips per tier:", {n: len(q) for n, (_, q) in TIERS.items()},
           "loss:", len(LOSS[1]), "near:", len(NEAR[1]))
     print("Vector quips per tier:", {n: len(q) for n, (_, q) in VECTOR_TIERS.items()},
           "vector loss:", len(VECTOR_LOSS[1]))
+    print("Vector grade bands:", {b: len(q) for b, (_, q) in VECTOR_GRADES.items()})
     print(f"Wrote {total} quips into {TARGET.name}")
 
 

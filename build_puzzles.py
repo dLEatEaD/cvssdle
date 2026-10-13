@@ -63,6 +63,12 @@ def is_operating_system(vendor: str, product: str) -> bool:
 # still eligible. Those are not Microsoft vulnerabilities.
 EXCLUDED_VENDORS = {"Microsoft"}
 
+# Description budget. The old 340 was tuned for a one-line blurb and cut off the
+# clause that carried the scoring signal; this leaves room for the "allows an
+# unauthenticated attacker with network access" sentence that makes a puzzle
+# answerable, while still fitting the card without scrolling.
+MAX_DESC = 600
+
 # Only keep vulns from vendors a security team will actually recognize.
 KNOWN_VENDORS = {
     "Microsoft", "Apache", "Cisco", "Citrix", "Fortinet", "VMware", "Oracle",
@@ -98,23 +104,66 @@ def fetch(url: str, key: str | None, tries: int = 5) -> dict:
 
 
 def clean(text: str) -> str:
-    """Trim NVD descriptions to one readable sentence or two."""
+    """Trim an NVD description to the part a player can actually score from.
+
+    The old version split on the version-list boilerplate and kept only what
+    came *before* it, which for Oracle-style entries is a single sentence
+    naming the product and nothing else. Everything that makes the puzzle
+    answerable - "unauthenticated attacker with network access via HTTP" -
+    lives after that sentence and was being thrown away. Measured across the
+    pool, no puzzle carried enough text to justify all eight metrics, so the
+    vector game was asking for information the page did not contain.
+
+    Boilerplate is now removed in place and the surrounding prose is kept.
+    """
     text = re.sub(r"\s+", " ", text).strip()
-    # Drop the trailing "This issue affects..." / advisory boilerplate.
-    text = re.split(r"\s+(?:This issue affects|Supported versions that)", text)[0]
-    if len(text) > 340:
-        cut = text[:340].rsplit(". ", 1)[0]
-        text = (cut + ".") if len(cut) > 120 else text[:337].rstrip() + "..."
+
+    # Version inventories carry no scoring signal and crowd out the prose.
+    # Drop the sentence, not the remainder of the description. The terminator
+    # has to be a real sentence end - version strings like "10.3.6.0.0" are
+    # full of dots, so matching the first period swallows only half of them.
+    text = re.sub(
+        r"\s*(?:Supported versions that are affected are|This issue affects)"
+        r".*?(?:\.(?=\s+[A-Z])|\.\s*$)", " ", text, flags=re.I
+    )
+
+    text = re.sub(r"\s+", " ", text).strip()
+    if len(text) > MAX_DESC:
+        # Cut on a sentence boundary only. Ending mid-word made the puzzle look
+        # broken and cost the reader the clause they needed.
+        cut = text[:MAX_DESC].rsplit(". ", 1)[0]
+        text = (cut + ".") if len(cut) > 140 else cut.rsplit(" ", 1)[0] + "..."
     return text
 
 
 def redact(text: str, cve_id: str) -> str:
-    """Remove giveaways: the CVE id and explicit severity words."""
+    """Remove giveaways: the CVE id, severity words, and the answer itself.
+
+    NVD descriptions for several vendors - Oracle most of all - end with the
+    literal base score and CVSS vector. Truncation used to cut those off by
+    accident; now that the prose is kept, they have to be removed deliberately
+    or the page would print the answer next to the question.
+    """
     text = re.sub(r"CVE-\d{4}-\d{4,7}", "this vulnerability", text)
     text = re.sub(
         r"\b(critical|high|medium|low)[- ]severity\b", "a", text, flags=re.I
     )
-    return text
+    # "CVSS Vector: (CVSS:3.1/AV:N/...)" and any bare vector string.
+    text = re.sub(r"\s*CVSS\s*Vector:\s*\(?CVSS:[\d.]+/[A-Z:/]+\)?\.?", "", text,
+                  flags=re.I)
+    text = re.sub(r"\s*\(?CVSS:[\d.]+/(?:[A-Z]{1,2}:[A-Z]/?)+\)?", "", text)
+    # "CVSS 3.1 Base Score 9.8 (Confidentiality, Integrity ... impacts)."
+    text = re.sub(
+        r"\s*CVSS\s*[\d.]*\s*Base\s*Scores?\s*[\d.]+(?:\s*\([^)]*\))?\.?",
+        "", text, flags=re.I
+    )
+    # Any remaining explicit score claim, e.g. "This has a CVSS score of 9.8."
+    # Consume the whole sentence, including a leading "This"/"It", or the
+    # subject is left stranded in front of the next one.
+    text = re.sub(r"\s*(?:This|It)?\s*(?:has|with)?\s*a?\s*CVSS\s*(?:v?[\d.]+)?\s*"
+                  r"(?:base\s*)?scores?\s*(?:of\s*)?[\d.]+\s*(?:\([^)]*\))?\.?",
+                  " ", text, flags=re.I)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def main() -> None:

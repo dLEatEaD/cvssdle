@@ -72,11 +72,9 @@ def main() -> None:
                     dist: [0,0,9,0,0,0], lastDay, lastId: 'CVE-OLD',
                     history: [], freezeUsedOn: null }));
                   startDaily();
-                  // Win today's game. Streaks are mode-agnostic, so this
-                  // drives the real game rather than the retired one.
-                  Object.assign(vectorPick, parseVector());
-                  renderVectorPreview();
-                  document.getElementById('btn-submit-vector').click();
+                  const i = document.getElementById('guess');
+                  const g = document.getElementById('btn-guess');
+                  i.value = DAILY.puzzle.score.toFixed(1); g.click();
                   const s = JSON.parse(localStorage.getItem('cvssdle.stats.v1'));
                   return { missed: missedWeekdays(lastDay, DAILY.number),
                            streak: s.streak, froze: s.freezeUsedOn !== null };
@@ -110,9 +108,9 @@ def main() -> None:
                 dist: [0,0,9,0,0,0], lastDay, lastId: 'CVE-OLD',
                 history: [], freezeUsedOn: null }));
               startDaily();
-              Object.assign(vectorPick, parseVector());
-              renderVectorPreview();
-              document.getElementById('btn-submit-vector').click();
+              const i = document.getElementById('guess');
+              const g = document.getElementById('btn-guess');
+              i.value = DAILY.puzzle.score.toFixed(1); g.click();
               const s = JSON.parse(localStorage.getItem('cvssdle.stats.v1'));
               return { streak: s.streak, froze: s.freezeUsedOn !== null };
             }""",

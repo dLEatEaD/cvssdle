@@ -84,6 +84,30 @@ def main() -> None:
     if today["id"] not in built:
         sys.exit("FAIL: today's puzzle is missing from the build")
 
+    # A description must never carry its own answer. A vector string is fatal -
+    # it is the complete answer in one line. A score claim is scrubbed by
+    # build_site.py on the way out, so reaching here means the scrub failed.
+    self_leaks = []
+    for p in practice + [today]:
+        d = p["desc"]
+        if re.search(r"CVSS:[\d.]+/(?:[A-Z]{1,2}:[A-Z]/?)+", d):
+            self_leaks.append(f"{p['id']}: vector string")
+        elif re.search(r"\bbase\s*score\b|\bCVSS\w*\s*score\b", d, re.I):
+            self_leaks.append(f"{p['id']}: score claim survived the scrub")
+    if self_leaks:
+        sys.exit(f"FAIL: {len(self_leaks)} descriptions carry their own answer: "
+                 f"{self_leaks[:5]}")
+
+    # Mid-sentence truncation is pool debt from the old 340-char cut, fixed by
+    # a pool refresh rather than by this build. Report it rather than failing:
+    # blocking the daily publish over the wording of a puzzle it cannot change
+    # is how production ended up a day stale once already.
+    chopped = [p["id"] for p in practice + [today]
+               if re.search(r"[a-z]$", p["desc"].rstrip())]
+    if chopped:
+        print(f"NOTE: {len(chopped)} descriptions end mid-sentence "
+              f"({', '.join(chopped[:3])}) - a pool refresh will rewrite them")
+
     # Count score fields inside the inlined data blocks, not anywhere in the
     # file: the game's own source legitimately contains the word "score".
     blocks = re.findall(r"const (?:DAILY|PRACTICE) = (.+?);\n", built, re.S)

@@ -1,27 +1,27 @@
 #!/usr/bin/env python3
-"""CI gate: one game, and honest stats.
+"""CI gate: one mode per puzzle, and honest per-mode stats.
 
-Guessing the score outright has been retired - it was solvable by binary search
-without knowing any CVSS - so building the vector is now the whole game. Two
-things have to hold for that to be a clean change rather than a destructive one.
+The two modes share one answer, and finishing either one puts the whole answer
+on screen - score mode reveals a metric per miss and prints the full vector at
+the end, vector mode prints the derived score. So an unguarded mode switch is
+not a mode switch, it is a lookup:
 
-First, nobody loses a game they were in the middle of. A score board already in
-progress for today is adopted and can be finished; the lock is keyed to today's
-puzzle, so it lapses by itself at the next rollover and that player joins the
-vector game tomorrow.
+  - play score mode, read the vector off the result card, switch, solve 1/4
+  - lose vector mode on purpose, read the score, switch, type it for 1/6
+  - abandon score mode at five guesses so recordStats never fires, switch,
+    and the laundered vector win records as genuine
 
-Second, a *finished* score board for today must also stay put. That player has
-already seen the full answer vector printed on their result card, so dropping
-them into today's vector game would hand them an eight-of-eight win for free -
-the exact laundering route the mode lock was built to close.
+The fix is a per-day lock committed on the first move. This gate holds it down,
+and holds down the stats bug that made the third route profitable: vector wins
+used to index the six-slot score histogram at guesses.length - 1, which is -1.
 
 Checks:
-  - a fresh player gets the vector game, with no toggle and no switchMode
-  - a score game in flight for today survives and can still be finished
-  - a finished score game for today is not reopened as a free vector win
-  - a score board for another puzzle is ignored
-  - stats record under the right distribution and never a negative index
-  - the help text describes one game and does not advertise a toggle
+  - a first score guess locks out vector mode, and vice versa
+  - the lock survives a reload and is scoped to the day and the CVE
+  - practice mode stays switchable
+  - only one mode can record stats for a given day
+  - a vector win lands in its own distribution, never at a negative index
+  - the help text documents both modes and the lock
 """
 
 import re
@@ -39,16 +39,17 @@ def check_help(text: str) -> list[str]:
     if not m:
         return ["could not find the How to play dialog"]
     help_text = m.group(1).lower()
-    if "build its cvss v3.1 vector" not in help_text:
-        bad.append("the help does not say the game is building the vector")
-    if "how many" not in help_text:
-        bad.append("the help does not explain that feedback is a count")
-    # The retired mode must not be advertised, or players will hunt for a
-    # toggle that is not there.
-    for stale in ("guess the score", "two ways to play", "toggle at the top",
-                  "one mode per puzzle"):
-        if stale in help_text:
-            bad.append(f"the help still advertises the retired mode: {stale!r}")
+    for phrase, why in (
+        ("guess the score", "score mode is not named in the help"),
+        ("build the vector", "vector mode is not named in the help"),
+        ("locks the mode", "the help does not explain the per-day mode lock"),
+        ("practice", "the help does not mention the practice exemption"),
+    ):
+        if phrase not in help_text:
+            bad.append(why)
+    # The old copy promised one game in six tries. Saying so now is just wrong.
+    if "guess its <b>cvss v3.1 base score</b> in 6 tries" in help_text:
+        bad.append("the help still describes score mode as the only mode")
     return bad
 
 
@@ -65,9 +66,7 @@ def main() -> None:
     if re.search(r"s\.dist\[\s*guesses\.length\s*-\s*1\s*\]", text):
         failures.append(
             "recordStats still indexes s.dist by guesses.length, which is -1 "
-            "in the vector game")
-    if ".mode-toggle" in text or 'id="mode-vector"' in text:
-        failures.append("the mode toggle is still in the built page")
+            "in vector mode")
 
     try:
         from playwright.sync_api import sync_playwright
@@ -92,127 +91,149 @@ def main() -> None:
             " if (h && h.open) h.close(); }"
         )
 
-        # --- a fresh player gets the vector game ----------------------
-        fresh = page.evaluate(
+        # --- a score guess locks out vector mode ----------------------
+        lock = page.evaluate(
             """() => {
-              localStorage.clear(); startDaily();
-              return { vector: vectorMode(),
-                       vectorArea: !document.getElementById('vector-area').hidden,
-                       scoreArea: !document.getElementById('play-area').hidden,
-                       toggle: !!document.querySelector('.mode-toggle'),
-                       switcher: typeof switchMode,
-                       setter: typeof setVectorMode,
+              localStorage.clear(); setVectorMode(false);
+              startDaily();
+              const before = document.getElementById('mode-vector').disabled;
+              const i = document.getElementById('guess');
+              i.value = '5.0';
+              document.getElementById('btn-guess').click();
+              const after = document.getElementById('mode-vector').disabled;
+              // Clicking it anyway must not switch, even if the UI were bypassed.
+              switchMode(true);
+              return { before, after, nowVector: vectorMode(),
+                       lock: modeLock(),
                        note: document.getElementById('mode-note').textContent };
             }"""
         )
-        if not fresh["vector"] or not fresh["vectorArea"] or fresh["scoreArea"]:
-            failures.append("a fresh player does not land in the vector game")
-        if fresh["toggle"]:
-            failures.append("the mode toggle is still rendered")
-        if fresh["switcher"] != "undefined" or fresh["setter"] != "undefined":
+        if lock["before"]:
+            failures.append("vector mode was disabled before any move was made")
+        if not lock["after"]:
+            failures.append("a score guess did not disable the vector button")
+        if lock["nowVector"]:
             failures.append(
-                "switchMode/setVectorMode still exist; score mode is retired")
-        if "eight metrics" not in fresh["note"].lower():
-            failures.append(f"the mode note is wrong: {fresh['note']!r}")
+                "switchMode let a player move to vector mode after guessing in "
+                "score mode - this is the answer-laundering route")
+        if lock["lock"] != "score":
+            failures.append(f"expected a score lock, got {lock['lock']!r}")
+        if "locked" not in lock["note"].lower():
+            failures.append("the mode note does not tell the player they are locked")
 
-        # --- a score game in flight for today survives ----------------
-        # Nobody loses a board they were part-way through. The adopted lock is
-        # keyed to today's puzzle, so it lapses at the next rollover.
-        inflight = page.evaluate(
+        # --- and the reverse direction --------------------------------
+        rev = page.evaluate(
             """() => {
-              localStorage.clear();
-              save(KEY_STATE, {
-                day: DAILY.number, id: DAILY.puzzle.id, mode: 'score',
-                guesses: [5.0, 7.0], vectorTries: [],
-                finished: false, won: false,
-              });
+              localStorage.clear(); setVectorMode(true);
               startDaily();
-              const rows = document.querySelectorAll('.row:not(.empty)').length;
-              const before = { vector: vectorMode(), lock: modeLock(), rows,
-                               playable: !document.getElementById('play-area').hidden,
-                               note: document.getElementById('mode-note').textContent };
-              // And it must be finishable.
+              // One deliberately wrong attempt is enough to commit.
+              const ans = parseVector();
+              for (const k of HINT_ORDER) {
+                const opts = Object.keys(METRIC_NAMES[k][1]);
+                vectorPick[k] = opts.find(o => o !== ans[k]) || opts[0];
+              }
+              renderVectorPreview();
+              document.getElementById('btn-submit-vector').click();
+              const disabled = document.getElementById('mode-score').disabled;
+              switchMode(false);
+              return { disabled, nowVector: vectorMode(), lock: modeLock() };
+            }"""
+        )
+        if not rev["disabled"]:
+            failures.append("a vector attempt did not disable the score button")
+        if not rev["nowVector"] or rev["lock"] != "vector":
+            failures.append(
+                "a player could drop back to score mode after a vector attempt")
+
+        # --- the lock survives a reload -------------------------------
+        page.reload()
+        after_reload = page.evaluate(
+            """() => {
+              const h = document.getElementById('dlg-help');
+              if (h && h.open) h.close();
+              return { lock: modeLock(), vector: vectorMode(),
+                       scoreDisabled: document.getElementById('mode-score').disabled };
+            }"""
+        )
+        if after_reload["lock"] != "vector" or not after_reload["vector"]:
+            failures.append("the mode lock did not survive a reload")
+        if not after_reload["scoreDisabled"]:
+            failures.append("the lock survived but the button was re-enabled")
+
+        # --- the lock is scoped to the day and the CVE ----------------
+        scoped = page.evaluate(
+            """() => {
+              // A lock written for another day, or for a different CVE on the
+              // same day number, must not bind today's puzzle. Pool refreshes
+              // remap day numbers to different CVEs.
+              localStorage.clear();
+              save(KEY_LOCK, { day: DAILY.number - 1, id: DAILY.puzzle.id,
+                               mode: 'vector' });
+              const otherDay = modeLock();
+              save(KEY_LOCK, { day: DAILY.number, id: 'CVE-0000-0000',
+                               mode: 'vector' });
+              const otherId = modeLock();
+              return { otherDay, otherId };
+            }"""
+        )
+        if scoped["otherDay"] is not None:
+            failures.append("a lock from another day still bound today's puzzle")
+        if scoped["otherId"] is not None:
+            failures.append("a lock for a different CVE still bound today's puzzle")
+
+        # --- practice stays switchable --------------------------------
+        prac = page.evaluate(
+            """() => {
+              localStorage.clear(); setVectorMode(false);
+              startDaily();
               const i = document.getElementById('guess');
-              i.value = DAILY.puzzle.score.toFixed(1);
-              document.getElementById('btn-guess').click();
-              const s = normaliseStats(load(KEY_STATS, blankStats()));
-              return { before,
-                       finished, won,
-                       dist: s.dist, vdist: s.vdist, wins: s.wins };
+              i.value = '5.0';
+              document.getElementById('btn-guess').click();   // locks the day
+              startPractice();
+              const before = vectorMode();
+              switchMode(true);
+              return { before, after: vectorMode(), practice: practiceMode };
             }"""
         )
-        b = inflight["before"]
-        if b["vector"] or b["lock"] != "score":
+        if prac["before"]:
+            failures.append("practice started in the wrong mode")
+        if not prac["after"] or not prac["practice"]:
             failures.append(
-                "a score game in flight for today was not adopted - that player "
-                "loses the board they were part-way through")
-        if b["rows"] != 2 or not b["playable"]:
-            failures.append(
-                f"the in-flight score board did not restore ({b['rows']} rows, "
-                f"playable={b['playable']})")
-        if "score game" not in b["note"].lower():
-            failures.append(f"the in-flight note is unclear: {b['note']!r}")
-        if not inflight["finished"] or not inflight["won"]:
-            failures.append("the adopted score game could not be finished")
-        # A score win belongs in the score histogram, not the vector one.
-        if inflight["dist"] != [0, 0, 1, 0, 0, 0]:
-            failures.append(
-                f"a 3-guess score win should sit in dist[2], got {inflight['dist']}")
-        if sum(inflight["vdist"]) != 0:
-            failures.append("a score win leaked into the vector distribution")
+                "practice mode is not switchable - it draws a different puzzle "
+                "and records nothing, so there is nothing to launder")
 
-        # --- a finished score game is not reopened --------------------
-        # That player has seen the full answer vector on their result card.
-        # Dropping them into today's vector game is a free 8/8.
-        done = page.evaluate(
+        # --- only one mode can record a day ---------------------------
+        once = page.evaluate(
             """() => {
-              localStorage.clear();
-              save(KEY_STATE, {
-                day: DAILY.number, id: DAILY.puzzle.id, mode: 'score',
-                guesses: [5.0, DAILY.puzzle.score], vectorTries: [],
-                finished: true, won: true,
-              });
+              localStorage.clear(); setVectorMode(false);
               startDaily();
-              return { vector: vectorMode(), lock: modeLock(),
-                       finished,
-                       resultShown: !document.getElementById('result').hidden,
-                       vectorPlayable: !document.getElementById('vector-area').hidden };
+              const i = document.getElementById('guess');
+              const b = document.getElementById('btn-guess');
+              // Five misses: the old bug was abandoning here, since recordStats
+              // never fired and the next mode's win counted as the day's result.
+              for (let k = 0; k < 5; k++) {
+                let g = (k + 1) * 1.1;
+                if (g === DAILY.puzzle.score) g = 0.2;
+                i.value = g.toFixed(1); b.click();
+              }
+              const played = normaliseStats(load(KEY_STATS, blankStats())).played;
+              switchMode(true);
+              return { played, stillScore: !vectorMode(),
+                       vectorBlocked: document.getElementById('mode-vector').disabled };
             }"""
         )
-        if done["vector"] or done["lock"] != "score":
+        if once["played"] != 0:
+            failures.append("an unfinished score game recorded a result")
+        if not once["stillScore"] or not once["vectorBlocked"]:
             failures.append(
-                "a finished score game for today was reopened as the vector game - "
-                "that player already saw the answer vector, so this is a free win")
-        if not done["finished"] or not done["resultShown"]:
-            failures.append("the finished score board did not show its result")
-        if done["vectorPlayable"]:
-            failures.append("the vector picker is playable over a finished board")
-
-        # --- a score board for another puzzle is ignored --------------
-        stale = page.evaluate(
-            """() => {
-              localStorage.clear();
-              save(KEY_STATE, {
-                day: DAILY.number - 2, id: 'CVE-1999-0001', mode: 'score',
-                guesses: [1.1, 2.2], vectorTries: [],
-                finished: false, won: false,
-              });
-              startDaily();
-              return { vector: vectorMode(), lock: modeLock(),
-                       rows: document.querySelectorAll('.row:not(.empty)').length,
-                       vectorPlayable: !document.getElementById('vector-area').hidden };
-            }"""
-        )
-        if not stale["vector"] or stale["lock"] is not None:
-            failures.append(
-                "a score board from another puzzle was adopted for today")
-        if stale["rows"] != 0 or not stale["vectorPlayable"]:
-            failures.append("a stale score board interfered with the vector game")
+                "abandoning score mode at five guesses still allowed a switch to "
+                "vector - the laundered win would record as the day's result")
 
         # --- vector wins land in their own distribution ---------------
         dist = page.evaluate(
             """() => {
-              localStorage.clear(); startDaily();
+              localStorage.clear(); setVectorMode(true);
+              startDaily();
               Object.assign(vectorPick, parseVector());
               renderMetricPicker(); renderVectorPreview();
               document.getElementById('btn-submit-vector').click();
@@ -247,12 +268,15 @@ def main() -> None:
               pools: typeof VECTOR_VERDICTS === 'object'
                 && Object.keys(VECTOR_VERDICTS).length,
               loss: Array.isArray(VECTOR_LOSS_QUIPS) && VECTOR_LOSS_QUIPS.length,
+              quip: document.querySelector('#result .quip').textContent,
             })"""
         )
         if quips["pools"] != 4:
             failures.append("VECTOR_VERDICTS must cover all four attempt counts")
         if not quips["loss"] or quips["loss"] < 30:
             failures.append("VECTOR_LOSS_QUIPS is missing or too small")
+        if "That is the rubric, not a lucky number" in quips["quip"]:
+            failures.append("the result card still uses the hardcoded vector line")
 
         if errors:
             failures.append(f"page errors: {errors[:3]}")
@@ -262,8 +286,8 @@ def main() -> None:
         for f in failures:
             print("FAIL:", f)
         sys.exit(f"{len(failures)} mode failures")
-    print("OK: the vector game is the only game, boards in flight from the "
-          "retired mode still finish, and each keeps its own honest distribution")
+    print("OK: one mode per puzzle, the lock survives reloads, practice stays "
+          "free, and each mode keeps its own honest distribution")
 
 
 if __name__ == "__main__":
